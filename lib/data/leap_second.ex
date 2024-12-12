@@ -30,7 +30,7 @@ defmodule SpaceDust.Data.LeapSecond do
     {2_457_754.5, 37}
   ]
 
-  @spec julianDateToLeapSeconds(Float) :: Integer
+  @spec julianDateToLeapSeconds(float()) :: integer()
   def julianDateToLeapSeconds(julianDate) do
     # find the value at the first key that us less than the julian date
     leapSecondIndex =
