@@ -51,6 +51,25 @@ defmodule MathTest do
     assert result == 0
   end
 
+  test "rotation matrix from euler" do
+    result = Matrix.rotationMatrixFromEuler(0, 0, 0)
+    assert result == Matrix.fromNestedList([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+  end
+
+  test "rotation matrix 90 about z" do
+    result = Matrix.rotationMatrixFromEuler(0, 0, :math.pi() / 2)
+    expected = Matrix.fromNestedList([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
+    assert_in_delta(Matrix.get(result, 1, 1), Matrix.get(expected, 1, 1), 1.0e-9)
+    assert_in_delta(Matrix.get(result, 1, 2), Matrix.get(expected, 1, 2), 1.0e-9)
+    assert_in_delta(Matrix.get(result, 1, 3), Matrix.get(expected, 1, 3), 1.0e-9)
+    assert_in_delta(Matrix.get(result, 2, 1), Matrix.get(expected, 2, 1), 1.0e-9)
+    assert_in_delta(Matrix.get(result, 2, 2), Matrix.get(expected, 2, 2), 1.0e-9)
+    assert_in_delta(Matrix.get(result, 2, 3), Matrix.get(expected, 2, 3), 1.0e-9)
+    assert_in_delta(Matrix.get(result, 3, 1), Matrix.get(expected, 3, 1), 1.0e-9)
+    assert_in_delta(Matrix.get(result, 3, 2), Matrix.get(expected, 3, 2), 1.0e-9)
+    assert_in_delta(Matrix.get(result, 3, 3), Matrix.get(expected, 3, 3), 1.0e-9)
+  end
+
   # vector tests
   test "create vector from list" do
     vector = Vector.fromList([1, 2, 3])
@@ -107,5 +126,15 @@ defmodule MathTest do
     b = %Vector3D{x: 4, y: 0, z: 0}
     result = Vector.angle(a, b)
     assert result == :math.pi() / 2
+  end
+
+  test "rotate vector using matrix" do
+    vector = %Vector3D{x: 1, y: 0, z: 0}
+    matrix = Matrix.rotationMatrixFromEuler(0, 0, :math.pi() / 2)
+    result = Vector.rotate(vector, matrix)
+    IO.inspect(result)
+    assert_in_delta(result.x, 0, 1.0e-9)
+    assert_in_delta(result.y, 1, 1.0e-9)
+    assert_in_delta(result.z, 0, 1.0e-9)
   end
 end

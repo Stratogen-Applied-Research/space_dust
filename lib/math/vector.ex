@@ -17,7 +17,6 @@ defmodule SpaceDust.Math.Vector do
 
   alias SpaceDust.Math.Vector.Vector3D, as: Vector3D
   alias SpaceDust.Math.Matrix, as: Matrix
-  alias SpaceDust.Math.Matrix.Matrix3x3, as: Matrix3x3
 
   @type vector() :: %Vector3D{
           x: number,

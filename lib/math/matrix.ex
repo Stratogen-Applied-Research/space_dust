@@ -50,6 +50,22 @@ defmodule SpaceDust.Math.Matrix do
     }
   end
 
+  @spec get(matrix(), integer(), integer()) :: number
+  @doc "get the value at a specific row and column"
+  def get(a, row, col) do
+    case {row, col} do
+      {1, 1} -> a.m11
+      {1, 2} -> a.m12
+      {1, 3} -> a.m13
+      {2, 1} -> a.m21
+      {2, 2} -> a.m22
+      {2, 3} -> a.m23
+      {3, 1} -> a.m31
+      {3, 2} -> a.m32
+      {3, 3} -> a.m33
+    end
+  end
+
   @spec multiply(matrix(), matrix()) :: matrix()
   @doc "multiply two 3x3 matrices"
   def multiply(a, b) do
@@ -89,9 +105,9 @@ defmodule SpaceDust.Math.Matrix do
       a.m13 * a.m22 * a.m31 - a.m11 * a.m23 * a.m32 - a.m12 * a.m21 * a.m33
   end
 
-  @spec fromEulerAngles(number(), number(), number()) :: matrix()
+  @spec rotationMatrixFromEuler(number(), number(), number()) :: matrix()
   @doc "create a 3x3 rotation matrix from Euler angles"
-  def fromEulerAngles(roll, pitch, yaw) do
+  def rotationMatrixFromEuler(roll, pitch, yaw) do
     cr = :math.cos(roll)
     sr = :math.sin(roll)
     cp = :math.cos(pitch)
@@ -101,13 +117,13 @@ defmodule SpaceDust.Math.Matrix do
 
     %Matrix3x3{
       m11: cp * cy,
-      m12: cp * sy,
+      m12: -cp * sy,
       m13: -sp,
-      m21: sr * sp * cy - cr * sy,
-      m22: sr * sp * sy + cr * cy,
+      m21: sr * sp * cy + cr * sy,
+      m22: sr * sp * sy - cr * cy,
       m23: sr * cp,
-      m31: cr * sp * cy + sr * sy,
-      m32: cr * sp * sy - sr * cy,
+      m31: cr * sp * cy - sr * sy,
+      m32: cr * sp * sy + sr * cy,
       m33: cr * cp
     }
   end
