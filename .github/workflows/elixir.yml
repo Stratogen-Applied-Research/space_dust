@@ -23,7 +23,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Set up asdf-vm prerequisites
-      run: apt install -y curl git libssl-dev libncurses-dev
+      run: sudo apt install -y curl git libssl-dev libncurses-dev
     - name: Install asdf-vm
       run: git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.14.1
     - name: Add asdf to PATH
