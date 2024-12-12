@@ -1,30 +1,9 @@
-defmodule TwoLineElementSet do
-  defstruct [
-    :line1,
-    :line2,
-    :catalogNumber,
-    :classification,
-    :internationalDesignator,
-    :epoch,
-    :meanMotionDot,
-    :meanMotionDoubleDot,
-    :bStar,
-    :ephemerisType,
-    :elementSetNumber,
-    :inclinationDeg,
-    :raanDeg,
-    :eccentricity,
-    :argPerigeeDeg,
-    :meanAnomalyDeg,
-    :meanMotion,
-    :revNumber
-  ]
-end
+defmodule SpaceDust.Utils.Tle do
 
+  alias SpaceDust.Utils.TwoLineElementSet, as: TwoLineElementSet
+  alias SpaceDust.Utils.Constants, as: Constants
 
-defmodule TLE do
-
-  @microsecondsPerDay 86400000000.0
+  @microsecondsPerDay Constants.secondsPerDay * 1_000_000
 
   @doc "parse a two line element set (TLE) from a string"
   def parseTlE(line1, line2) do
