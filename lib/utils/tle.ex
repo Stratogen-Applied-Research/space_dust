@@ -1,4 +1,7 @@
 defmodule SpaceDust.Utils.Tle do
+  @moduledoc """
+  Utility functions for parsing two-line element sets (TLEs)
+  """
 
   alias SpaceDust.Utils.TwoLineElementSet, as: TwoLineElementSet
   alias SpaceDust.Utils.Constants, as: Constants
@@ -6,7 +9,7 @@ defmodule SpaceDust.Utils.Tle do
   @microsecondsPerDay Constants.secondsPerDay * 1_000_000
 
   @doc "parse a two line element set (TLE) from a string"
-  def parseTlE(line1, line2) do
+  def parseTLE(line1, line2) do
     # check to ensure each line is 69 characters
     case {String.length(line1), String.length(line2)} do
       {69, 69} -> # TLE has correct number of characters, proceed with parsing

@@ -1,6 +1,5 @@
 defmodule TleTest do
   use ExUnit.Case
-  doctest SpaceDust
 
   test "parse valid TLE" do
     tleLine1 = "1 25544U 98067A   24346.98672894  .00019985  00000-0  35072-3 0  9994"
@@ -8,7 +7,7 @@ defmodule TleTest do
 
     {:ok, tleEpoch, 0} = DateTime.from_iso8601("2024-12-11T23:40:53.380415Z")
 
-    {:ok, tle} = SpaceDust.Utils.Tle.parseTlE(tleLine1, tleLine2)
+    {:ok, tle} = SpaceDust.Utils.Tle.parseTLE(tleLine1, tleLine2)
     assert tle.catalogNumber == "25544"
     assert tle.classification == "U"
     assert tle.internationalDesignator == "98067A"
