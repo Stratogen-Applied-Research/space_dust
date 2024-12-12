@@ -161,7 +161,6 @@ defmodule SpaceDust.Bodies.Earth do
   @doc "earth J6 coefficient (unitless)"
   def j6, do: 5.40681239107085e-7
 
-
   @doc "calculate the precession angles for the earth"
   def precessionAngles(julianDate) do
     t = (julianDate - Constants.j2000()) / 36525.0
