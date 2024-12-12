@@ -45,12 +45,12 @@ defmodule SpaceDust.Time.TimeConversions do
   @doc "convert a UTC DateTime to TT"
   def utcToTT(dateTime) do
     # TT is 32.184 seconds ahead of TAI
-    DateTime.add(utcToTAI(dateTime), 32.184, :second)
+    DateTime.add(utcToTAI(dateTime), 32_184, :millisecond)
   end
 
   @doc "convert a TT DateTime to UTC"
   def ttToUTC(dateTime) do
     # TT is 32.184 seconds ahead of TAI
-    DateTime.add(taiToUTC(dateTime), -32.184, :second)
+    DateTime.add(taiToUTC(dateTime), -32_184, :millisecond)
   end
 end
