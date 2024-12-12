@@ -16,7 +16,7 @@ defmodule SpaceDust.Time.TimeConversions do
   @doc "convert a DateTime to a Julian date"
   def dateTimeToJulianDate(dateTime) do
     # convert the DateTime to a Unix timestamp
-    unixTimestamp = DateTime.to_unix(dateTime)
+    unixTimestamp = DateTime.to_unix(dateTime, :millisecond) / 1_000
     # convert the Unix timestamp to a Julian date
     unixTimestamp / Constants.secondsPerDay + Constants.unixEpochJulianDate
   end

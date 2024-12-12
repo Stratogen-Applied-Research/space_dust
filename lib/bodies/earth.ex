@@ -1,3 +1,29 @@
+defmodule SpaceDust.Bodies.Earth.PrecessionAngles do
+  @moduledoc """
+  Struct to hold the precession angles for the earth (radians)
+  """
+  defstruct [
+    :zeta,
+    :theta,
+    :z
+  ]
+end
+
+defmodule SpaceDust.Bodies.Earth.NutationAngles do
+  @moduledoc """
+  Struct to hold the nutation angles for the earth (radians)
+  """
+  defstruct [
+    :dPsi,
+    :dEps,
+    :mEps,
+    :eps,
+    :eqEq,
+    :gast
+  ]
+end
+
+
 defmodule SpaceDust.Bodies.Earth do
   alias SpaceDust.Utils.Constants, as: Constants
 
@@ -73,4 +99,47 @@ defmodule SpaceDust.Bodies.Earth do
     -0.0130042 * Constants.degreesToRadians,
     23.439291 * Constants.degreesToRadians]
   end
+
+  @doc "earth gravitational parameter in m^3/s^2"
+  def mu, do: 3.986004418e14
+
+  @doc "earth equatorial radius in meters"
+  def equatorialRadius, do: 6378137.0
+
+  @doc "earth flattening (unitless)"
+  def flattening, do: 1.0 / 298.257223563
+
+  @doc "earth polar radius in meters"
+  def polarRadius do
+    equatorialRadius() * (1.0 - flattening())
+  end
+
+  @doc "earth mean radius in meters"
+  def meanRadius do
+    (2.0 * equatorialRadius() + polarRadius()) / 3.0
+  end
+
+  @doc "earth sidereal rotation rate in rad/s"
+  def siderealRotationRate, do: 7.292115e-5
+
+  @doc "earth sidereal rotation period in seconds"
+  def siderealRotationPeriod do
+    2.0 * :math.pi / siderealRotationRate()
+  end
+
+  @doc "earth J2 coefficient (unitless)"
+  def j2, do: 1.08262668355315e-3
+
+  @doc "earth J3 coefficient (unitless)"
+  def j3, do: -2.53265648533224e-6
+
+  @doc "earth J4 coefficient (unitless)"
+  def j4, do: -1.619621591367e-6
+
+  @doc "earth J5 coefficient (unitless)"
+  def j5, do: -2.27296082868698e-7
+
+  @doc "earth J6 coefficient (unitless)"
+  def j6, do: 5.40681239107085e-7
+
 end
