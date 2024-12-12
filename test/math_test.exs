@@ -39,6 +39,18 @@ defmodule MathTest do
     assert result == Matrix.fromNestedList([[30, 24, 18], [84, 69, 54], [138, 114, 90]])
   end
 
+  test "transpose 3x3 matrix" do
+    matrix = Matrix.fromNestedList([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    result = Matrix.transpose(matrix)
+    assert result == Matrix.fromNestedList([[1, 4, 7], [2, 5, 8], [3, 6, 9]])
+  end
+
+  test "3x3 matrix determinant" do
+    matrix = Matrix.fromNestedList([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    result = Matrix.determinant(matrix)
+    assert result == 0
+  end
+
   # vector tests
   test "create vector from list" do
     vector = Vector.fromList([1, 2, 3])
@@ -77,5 +89,23 @@ defmodule MathTest do
     vector = %Vector3D{x: 1, y: 2, z: 3}
     result = Vector.magnitude(vector)
     assert result == 3.7416573867739413
+  end
+
+  test "normalize a 3D vector" do
+    vector = %Vector3D{x: 1, y: 2, z: 3}
+    result = Vector.normalize(vector)
+
+    assert result == %Vector3D{
+             x: 0.2672612419124244,
+             y: 0.5345224838248488,
+             z: 0.8017837257372732
+           }
+  end
+
+  test "angle between two 3D vectors" do
+    a = %Vector3D{x: 0, y: 0, z: 3}
+    b = %Vector3D{x: 4, y: 0, z: 0}
+    result = Vector.angle(a, b)
+    assert result == :math.pi() / 2
   end
 end

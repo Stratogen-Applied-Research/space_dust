@@ -65,4 +65,50 @@ defmodule SpaceDust.Math.Matrix do
       m33: a.m31 * b.m13 + a.m32 * b.m23 + a.m33 * b.m33
     }
   end
+
+  @spec transpose(matrix()) :: matrix()
+  @doc "transpose a 3x3 matrix"
+  def transpose(a) do
+    %Matrix3x3{
+      m11: a.m11,
+      m12: a.m21,
+      m13: a.m31,
+      m21: a.m12,
+      m22: a.m22,
+      m23: a.m32,
+      m31: a.m13,
+      m32: a.m23,
+      m33: a.m33
+    }
+  end
+
+  @spec determinant(matrix()) :: number
+  @doc "determinant of a 3x3 matrix"
+  def determinant(a) do
+    a.m11 * a.m22 * a.m33 + a.m12 * a.m23 * a.m31 + a.m13 * a.m21 * a.m32 -
+      a.m13 * a.m22 * a.m31 - a.m11 * a.m23 * a.m32 - a.m12 * a.m21 * a.m33
+  end
+
+  @spec fromEulerAngles(number(), number(), number()) :: matrix()
+  @doc "create a 3x3 rotation matrix from Euler angles"
+  def fromEulerAngles(roll, pitch, yaw) do
+    cr = :math.cos(roll)
+    sr = :math.sin(roll)
+    cp = :math.cos(pitch)
+    sp = :math.sin(pitch)
+    cy = :math.cos(yaw)
+    sy = :math.sin(yaw)
+
+    %Matrix3x3{
+      m11: cp * cy,
+      m12: cp * sy,
+      m13: -sp,
+      m21: sr * sp * cy - cr * sy,
+      m22: sr * sp * sy + cr * cy,
+      m23: sr * cp,
+      m31: cr * sp * cy + sr * sy,
+      m32: cr * sp * sy - sr * cy,
+      m33: cr * cp
+    }
+  end
 end

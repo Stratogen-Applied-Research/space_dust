@@ -16,6 +16,8 @@ defmodule SpaceDust.Math.Vector do
   """
 
   alias SpaceDust.Math.Vector.Vector3D, as: Vector3D
+  alias SpaceDust.Math.Matrix, as: Matrix
+  alias SpaceDust.Math.Matrix.Matrix3x3, as: Matrix3x3
 
   @type vector() :: %Vector3D{
           x: number,
@@ -94,6 +96,22 @@ defmodule SpaceDust.Math.Vector do
       x: a.x * s,
       y: a.y * s,
       z: a.z * s
+    }
+  end
+
+  @spec angle(vector(), vector()) :: number
+  @doc "angle between two 3D vectors"
+  def angle(a, b) do
+    :math.acos(dot(a, b))
+  end
+
+  @spec rotate(vector(), Matrix.matrix()) :: vector()
+  @doc "rotate a 3D vector by a 3x3 matrix"
+  def rotate(a, m) do
+    %Vector3D{
+      x: a.x * m.m11 + a.y * m.m12 + a.z * m.m13,
+      y: a.x * m.m21 + a.y * m.m22 + a.z * m.m23,
+      z: a.x * m.m31 + a.y * m.m32 + a.z * m.m33
     }
   end
 end
