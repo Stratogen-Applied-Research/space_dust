@@ -1,5 +1,6 @@
 defmodule SpaceDust.Time.TimeConversions do
   alias SpaceDust.Utils.Constants, as: Constants
+  alias SpaceDust.Data.LeapSecond, as: LeapSecond
 
   @doc "convert a Julian date to a DateTime"
   def julianDateToDateTime(julianDate) do
@@ -23,5 +24,33 @@ defmodule SpaceDust.Time.TimeConversions do
   @doc "convert a Julian date to a Modified Julian date"
   def julianDateToModifiedJulianDate(julianDate) do
     julianDate - 2_400_000.5
+  end
+
+  @doc "convert a UTC DateTime to TAI"
+  def utcToTAI(dateTime) do
+    # leap seconds are added to UTC to get TAI
+    julianDate = dateTimeToJulianDate(dateTime)
+    leapSeconds = LeapSecond.julianDateToLeapSeconds(julianDate)
+    DateTime.add(dateTime, leapSeconds, :second)
+  end
+
+  @doc "convert a TAI DateTime to UTC"
+  def taiToUTC(dateTime) do
+    # leap seconds are subtracted from TAI to get UTC
+    julianDate = dateTimeToJulianDate(dateTime)
+    leapSeconds = LeapSecond.julianDateToLeapSeconds(julianDate)
+    DateTime.add(dateTime, -leapSeconds, :second)
+  end
+
+  @doc "convert a UTC DateTime to TT"
+  def utcToTT(dateTime) do
+    # TT is 32.184 seconds ahead of TAI
+    DateTime.add(utcToTAI(dateTime), 32.184, :second)
+  end
+
+  @doc "convert a TT DateTime to UTC"
+  def ttToUTC(dateTime) do
+    # TT is 32.184 seconds ahead of TAI
+    DateTime.add(taiToUTC(dateTime), -32.184, :second)
   end
 end
