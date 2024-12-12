@@ -25,6 +25,9 @@ end
 
 defmodule SpaceDust.Bodies.Earth do
   alias SpaceDust.Utils.Constants, as: Constants
+  alias SpaceDust.Utils.Math, as: Math
+  alias SpaceDust.Bodies.Earth.PrecessionAngles
+  alias SpaceDust.Bodies.Earth.NutationAngles
 
   @doc "'zeta' coefficients for earth precession"
   defp zetaPoly do
@@ -157,4 +160,19 @@ defmodule SpaceDust.Bodies.Earth do
 
   @doc "earth J6 coefficient (unitless)"
   def j6, do: 5.40681239107085e-7
+
+
+  @doc "calculate the precession angles for the earth"
+  def precessionAngles(julianDate) do
+    t = (julianDate - Constants.j2000()) / 36525.0
+    zeta = Math.polyEval(zetaPoly(), t)
+    theta = Math.polyEval(thetaPoly(), t)
+    z = Math.polyEval(zPoly(), t)
+
+    %PrecessionAngles{
+      zeta: zeta,
+      theta: theta,
+      z: z
+    }
+  end
 end
