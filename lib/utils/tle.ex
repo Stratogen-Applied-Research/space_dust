@@ -20,12 +20,12 @@ defmodule SpaceDust.Utils.Tle do
             2000 + lastDigitsOfYear
           end
 
-          dayOfYear = String.to_float(String.slice(line1, 20..31))
+          dayOfYear = String.to_float(String.slice(line1, 20..31)) - 1  # day 1 is 0 days from the start of the year
           daysToAdd = trunc(dayOfYear)
           microsecondsToAdd = trunc((dayOfYear - daysToAdd) * @microsecondsPerDay)
           startOfYear = DateTime.new!(Date.new!(epochYear, 1, 1), Time.new!(0, 0, 0, 0))
 
-          epoch = DateTime.add(startOfYear, daysToAdd)
+          epoch = DateTime.add(startOfYear, daysToAdd, :day)
           |> DateTime.add(microsecondsToAdd, :microsecond)
 
           meanMotionDoubleDot = if String.at(line1, 44) == "-" do
