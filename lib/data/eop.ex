@@ -1,38 +1,15 @@
-defmodule SpaceDust.Data.IersEopData do
-  @moduledoc """
-  IERS Earth Orientation Parameters (EOP) data
-  """
-  defstruct [
-    :year,
-    :month,
-    :day,
-    :modifiedJulianDate,
-    :pmX,
-    :errorPMX,
-    :pmY,
-    :errorPMY,
-    :ut1UTC,
-    :errorUT1UTC,
-    :lod,
-    :errorLOD,
-    :dX,
-    :errorDX,
-    :dY,
-    :errorDY
-  ]
-end
-
 defmodule SpaceDust.Data.EarthOrientationParameters do
   @moduledoc """
   Parameters required to compute the CRS-TRS transformation matrix
   """
   defstruct [
-    :pmX,
-    :pmY,
+    :modifiedJulianDate,
+    :polarMotionX,
+    :polarMotionY,
     :ut1UTC,
     :lod,
-    :dX,
-    :dY
+    :dEps,
+    :dPsi
   ]
 end
 
@@ -41,8 +18,13 @@ defmodule SpaceDust.Data.EOP do
   Earth Orientation Parameters (EOP) data - ref https://hpiers.obspm.fr/eoppc/bul/bulb/explanatory.html
   """
 
-  @eopDataUrl "https://datacenter.iers.org/data/9/finals2000A.all"
+  # this pulls the dEps, dPsi data from the IERS
+  @eopDataUrl "https://datacenter.iers.org/data/latestVersion/EOP_20_C04_12h_dPsi_dEps_1984-now.txt"
+  @eopDataPath "eop_data.txt"
 
+  alias SpaceDust.Data.EarthOrientationParameters, as: EarthOrientationParameters
+
+  @spec pullEOPData() :: {:error, String.t()} | {:ok, list()}
   @doc "pull EOP data from the IERS - realistically only needed once a year, or at container start"
   def pullEOPData() do
     response = Req.get!(@eopDataUrl)
@@ -54,6 +36,10 @@ defmodule SpaceDust.Data.EOP do
         lines =
           String.split(response.body, "\n")
           |> Enum.map(&String.trim/1)
+          # remove empty lines
+          |> Enum.reject(&(&1 == ""))
+          # remove comment lines
+          |> Enum.reject(&String.starts_with?(&1, "#"))
 
         {:ok, lines}
 
@@ -62,53 +48,71 @@ defmodule SpaceDust.Data.EOP do
     end
   end
 
-  @doc "parse a line of EOP data from the IERS"
-  def parseEOPLine(line) do
-    # split the line into its components (space-delimited)
-    # lines are arranged as follows: Year, Month, Day, Modified Julian Date, PM-x [arcsec], error_PM-x [arcsec] PM-y [arcsec], error_PM-y [arcsec], UT1-UTC [seconds], error_UT1-UTC [seconds], LOD [milliseconds], error_LOD [milliseconds], dX [milliarcsec], error_dX [milliarcsec], dY [milliarcsec], error_dY [milliarcsec]
-    components = String.split(line, " ")
-    yearLastTwoDigits = String.to_integer(Enum.at(components, 0))
+  @spec saveEopData(any()) :: {:error, atom()}
+  @doc "save EOP data to a file"
+  def saveEopData(lines) do
+    # TODO: make a data directory if it doesn't exist
+    case File.write(@eopDataPath, Enum.join(lines, "\n")) do
+      :ok -> {:ok, @eopDataPath}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
-    year =
-      if yearLastTwoDigits > Date.utc_today().year - 2000 do
-        1900 + yearLastTwoDigits
-      else
-        2000 + yearLastTwoDigits
-      end
+  @spec readSavedEopData() :: {:error, atom()} | {:ok, [binary()]}
+  def readSavedEopData() do
+    case File.read("eop_data.txt") do
+      {:ok, data} ->
+        {:ok, String.split(data, "\n")}
 
-    month = String.to_integer(Enum.at(components, 1))
-    day = String.to_integer(Enum.at(components, 2))
-    modifiedJulianDate = String.to_float(Enum.at(components, 3))
-    pmX = String.to_float(Enum.at(components, 4))
-    errorPMX = String.to_float(Enum.at(components, 5))
-    pmY = String.to_float(Enum.at(components, 6))
-    errorPMY = String.to_float(Enum.at(components, 7))
-    ut1UTC = String.to_float(Enum.at(components, 8))
-    errorUT1UTC = String.to_float(Enum.at(components, 9))
-    lod = String.to_float(Enum.at(components, 10))
-    errorLOD = String.to_float(Enum.at(components, 11))
-    dX = String.to_float(Enum.at(components, 12))
-    errorDX = String.to_float(Enum.at(components, 13))
-    dY = String.to_float(Enum.at(components, 14))
-    errorDY = String.to_float(Enum.at(components, 15))
+      {:error, :enoent} ->
+        case pullEOPData() do
+          {:ok, lines} ->
+            saveEopData(lines)
+            {:ok, lines}
 
-    %SpaceDust.Data.IersEopData{
-      year: year,
-      month: month,
-      day: day,
-      modifiedJulianDate: modifiedJulianDate,
-      pmX: pmX,
-      errorPMX: errorPMX,
-      pmY: pmY,
-      errorPMY: errorPMY,
-      ut1UTC: ut1UTC,
-      errorUT1UTC: errorUT1UTC,
-      lod: lod,
-      errorLOD: errorLOD,
-      dX: dX,
-      errorDX: errorDX,
-      dY: dY,
-      errorDY: errorDY
-    }
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @spec parseEopLine(String.t()) :: {:error, String.t()} | {:ok, EarthOrientationParameters.t()}
+  def parseEopLine(line) do
+    # line columns:
+    # YR  MM  DD  HH       MJD        x(")        y(")  UT1-UTC(s)     dPsi(")     dEps(")      xrt(")      yrt(")      LOD(s)        x Er        y Er  UT1-UTC Er     dPsi Er     dEps Er      xrt Er      yrt Er      LOD Er
+    # we want MJD, X, Y, UT1-UTC, dPsi, dEps, LOD
+
+    try do
+      # split the line into columns
+      columns =
+        String.split(line, " ")
+        # remove empty columns
+        |> Enum.reject(&(&1 == ""))
+
+      # extract the columns we want
+      mjd = String.to_float(Enum.at(columns, 4))
+      x = String.to_float(Enum.at(columns, 5))
+      y = String.to_float(Enum.at(columns, 6))
+      ut1UTC = String.to_float(Enum.at(columns, 7))
+      dPsi = String.to_float(Enum.at(columns, 8))
+      dEps = String.to_float(Enum.at(columns, 9))
+      lod = String.to_float(Enum.at(columns, 12))
+
+      {:ok,
+       %EarthOrientationParameters{
+         modifiedJulianDate: mjd,
+         polarMotionX: x,
+         polarMotionY: y,
+         ut1UTC: ut1UTC,
+         dPsi: dPsi,
+         dEps: dEps,
+         lod: lod
+       }}
+    rescue
+      ArgumentError -> {:error, "Unable to parse EOP line"}
+    end
   end
 end
