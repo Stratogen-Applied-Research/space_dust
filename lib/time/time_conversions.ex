@@ -1,6 +1,10 @@
 defmodule SpaceDust.Time.TimeConversions do
   alias SpaceDust.Utils.Constants, as: Constants
   alias SpaceDust.Data.LeapSecond, as: LeapSecond
+  alias SpaceDust.Math.Functions, as: Math
+  alias SpaceDust.Utils.Constants, as: Constants
+
+  @gmstPoly [-6.2e-6, 0.093104, 876_600 * 3600 + 8_640_184.812866, 67310.54841]
 
   @spec julianDateToDateTime(number()) :: DateTime.t()
   @doc "convert a Julian date to a DateTime"
@@ -21,6 +25,11 @@ defmodule SpaceDust.Time.TimeConversions do
     unixTimestamp = DateTime.to_unix(dateTime, :millisecond) / 1_000
     # convert the Unix timestamp to a Julian date
     unixTimestamp / Constants.secondsPerDay() + Constants.unixEpochJulianDate()
+  end
+
+  @doc "convert a Julian date to Julian centuries"
+  def julianDateToJulianCenturies(julianDate) do
+    julianDate / 36525.0
   end
 
   @spec julianDateToModifiedJulianDate(number()) :: float()
@@ -59,5 +68,27 @@ defmodule SpaceDust.Time.TimeConversions do
   def ttToUTC(dateTime) do
     # TT is 32.184 seconds ahead of TAI
     DateTime.add(taiToUTC(dateTime), -32_184, :millisecond)
+  end
+
+  @doc "convert a UTC DateTime to GMST angle"
+  def utcToGmstAngle(dateTime) do
+    julianCenturies =
+      dateTimeToJulianDate(dateTime)
+      |> julianDateToJulianCenturies()
+
+    seconds = Math.polyEval(@gmstPoly, julianCenturies)
+    fractionalRevolution = seconds / Constants.secondsPerDay()
+
+    # get the modulus of the fractional revolution
+    result = fractionalRevolution - trunc(fractionalRevolution)
+
+    # convert the result to an angle
+    angle = result * :math.pi() * 2.0
+
+    if angle < 0.0 do
+      angle + :math.pi() * 2.0
+    else
+      angle
+    end
   end
 end

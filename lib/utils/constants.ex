@@ -5,6 +5,9 @@ defmodule SpaceDust.Utils.Constants do
   def arcsecToRadians, do: :math.pi() / 648_000.0
   def radiansToArcsec, do: 648_000.0 / :math.pi()
 
+  # angle-time relations
+  def ttArcsecToRadians, do: arcsecToRadians() / 1000.0
+
   # time constants
   @doc "seconds per day - 86400.0"
   def secondsPerDay, do: 86400.0

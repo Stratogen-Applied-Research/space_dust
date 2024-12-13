@@ -25,9 +25,14 @@ end
 
 defmodule SpaceDust.Bodies.Earth do
   alias SpaceDust.Utils.Constants, as: Constants
-  alias SpaceDust.Utils.Math, as: Math
+  alias SpaceDust.Math.Functions, as: Math
   alias SpaceDust.Bodies.Earth.PrecessionAngles
   alias SpaceDust.Bodies.Earth.NutationAngles
+  alias SpaceDust.Data.IAU1980, as: IAU1980
+  alias SpaceDust.Data.IAU1980Data, as: IAU1980Data
+  alias SpaceDust.Data.EOP, as: EOP
+  alias SpaceDust.Data.EarthOrientationParameters, as: EarthOrientationParameters
+  alias SpaceDust.Time.TimeConversions, as: TimeConversions
 
   @doc "'zeta' coefficients for earth precession"
   defp zetaPoly do
@@ -162,7 +167,8 @@ defmodule SpaceDust.Bodies.Earth do
   def j6, do: 5.40681239107085e-7
 
   @doc "calculate the precession angles for the earth"
-  def precessionAngles(julianDate) do
+  def precessionAngles(epochUtc) do
+    julianDate = TimeConversions.dateTimeToJulianDate(epochUtc)
     t = (julianDate - Constants.j2000()) / 36525.0
     zeta = Math.polyEval(zetaPoly(), t)
     theta = Math.polyEval(thetaPoly(), t)
@@ -172,6 +178,103 @@ defmodule SpaceDust.Bodies.Earth do
       zeta: zeta,
       theta: theta,
       z: z
+    }
+  end
+
+  @doc "compute deltaPsi and deltaEpsilon from IAU 1980 nutation theory"
+  defp iauToNutationAngles(
+         iau1980,
+         lunarAnomaly,
+         solarAnomaly,
+         lunarLatitude,
+         sunElongation,
+         lunarRaan,
+         julianCenturies
+       ) do
+    case iau1980 do
+      %IAU1980Data{} = iau1980 ->
+        arg =
+          iau1980.a1 * lunarAnomaly +
+            iau1980.a2 * solarAnomaly +
+            iau1980.a3 * lunarLatitude +
+            iau1980.a4 * sunElongation +
+            iau1980.a5 * lunarRaan
+
+        sinC = iau1980.ai + iau1980.bi * julianCenturies
+        cosC = iau1980.ci + iau1980.di * julianCenturies
+
+        deltaPsi = sinC * :math.sin(arg)
+        deltaEpsilon = cosC * :math.cos(arg)
+        {deltaPsi, deltaEpsilon}
+
+      _ ->
+        raise ArgumentError, "Invalid IAU 1980 data"
+    end
+  end
+
+  @doc "calculate the nutation angles for the earth"
+  def nutationAngles(epochUtc, coeffs \\ 4, useEop \\ true) do
+    julianCenturies =
+      TimeConversions.utcToTT(epochUtc)
+      |> TimeConversions.dateTimeToJulianCenturies()
+      |> TimeConversions.julianDateToJulianCenturies()
+
+    lunarAnomaly = Math.polyEval(lunarAnomalyPoly(), julianCenturies)
+    solarAnomaly = Math.polyEval(solarAnomalyPoly(), julianCenturies)
+    lunarLatitude = Math.polyEval(lunarLatitudePoly(), julianCenturies)
+    sunElongation = Math.polyEval(sunElongationPoly(), julianCenturies)
+    lunarRaan = Math.polyEval(lunarRaanPoly(), julianCenturies)
+
+    # sum results of nutation theory
+    {deltaPsi, deltaEpsilon} =
+      Enum.reduce(0..(coeffs - 1), {0.0, 0.0}, fn r, {accPsi, accEps} ->
+        {dPsi, dEps} =
+          IAU1980.getCoefficients(r)
+          |> iauToNutationAngles(
+            lunarAnomaly,
+            solarAnomaly,
+            lunarLatitude,
+            sunElongation,
+            lunarRaan,
+            julianCenturies
+          )
+
+        {accPsi + dPsi, accEps + dEps}
+      end)
+
+    deltaPsiRad = deltaPsi * Constants.ttArcsecToRadians()
+    deltaEpsilonRad = deltaEpsilon * Constants.ttArcsecToRadians()
+
+    {finalDeltaPsi, finalDeltaEpsilon} =
+      case useEop do
+        true ->
+          {:ok, eopData} =
+            TimeConversions.dateTimeToJulianDate(epochUtc)
+            |> EOP.getEopData()
+
+          {deltaPsiRad + eopData.dPsi, deltaEpsilonRad + eopData.dEps}
+
+        false ->
+          {deltaPsiRad, deltaEpsilonRad}
+      end
+
+    meanEpsilon = Math.polyEval(meanEpsilonPoly(), julianCenturies)
+    epsilon = meanEpsilon + finalDeltaEpsilon
+
+    eqEq =
+      finalDeltaPsi * :math.cos(epsilon) +
+        0.00264 * Constants.arcsecToRadians() * :math.sin(lunarRaan) +
+        0.000063 * Constants.arcsecToRadians() * :math.sin(2.0 * lunarRaan)
+
+    gast = TimeConversions.utcToGmstAngle(epochUtc) + eqEq
+
+    %NutationAngles{
+      dPsi: finalDeltaPsi,
+      dEps: finalDeltaEpsilon,
+      mEps: meanEpsilon,
+      eps: epsilon,
+      eqEq: eqEq,
+      gast: gast
     }
   end
 end
