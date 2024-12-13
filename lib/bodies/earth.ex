@@ -216,7 +216,7 @@ defmodule SpaceDust.Bodies.Earth do
   def nutationAngles(epochUtc, coeffs \\ 4, useEop \\ true) do
     julianCenturies =
       TimeConversions.utcToTT(epochUtc)
-      |> TimeConversions.dateTimeToJulianCenturies()
+      |> TimeConversions.dateTimeToJulianDate()
       |> TimeConversions.julianDateToJulianCenturies()
 
     lunarAnomaly = Math.polyEval(lunarAnomalyPoly(), julianCenturies)
