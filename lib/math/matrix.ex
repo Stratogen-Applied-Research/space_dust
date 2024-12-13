@@ -108,17 +108,23 @@ defmodule SpaceDust.Math.Matrix do
   @spec rotationMatrixFromEuler(number(), number(), number()) :: matrix()
   @doc "create a 3x3 rotation matrix from Euler angles"
   def rotationMatrixFromEuler(roll, pitch, yaw) do
-    #TODO: make this more efficient (precalculate sin/cos)
+    cos_yaw = :math.cos(yaw)
+    sin_yaw = :math.sin(yaw)
+    cos_pitch = :math.cos(pitch)
+    sin_pitch = :math.sin(pitch)
+    cos_roll = :math.cos(roll)
+    sin_roll = :math.sin(roll)
+
     %Matrix3x3{
-      m11: :math.cos(yaw) * :math.cos(pitch),
-      m12: :math.cos(yaw) * :math.sin(pitch) * :math.sin(roll) - :math.sin(yaw) * :math.cos(roll),
-      m13: :math.cos(yaw) * :math.sin(pitch) * :math.cos(roll) + :math.sin(yaw) * :math.sin(roll),
-      m21: :math.sin(yaw) * :math.cos(pitch),
-      m22: :math.sin(yaw) * :math.sin(pitch) * :math.sin(roll) + :math.cos(yaw) * :math.cos(roll),
-      m23: :math.sin(yaw) * :math.sin(pitch) * :math.cos(roll) - :math.cos(yaw) * :math.sin(roll),
-      m31: - :math.sin(pitch),
-      m32: :math.cos(pitch) * :math.sin(roll),
-      m33: :math.cos(pitch) * :math.cos(roll)
+      m11: cos_yaw * cos_pitch,
+      m12: cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll,
+      m13: cos_yaw * sin_pitch * cos_roll + sin_yaw * sin_roll,
+      m21: sin_yaw * cos_pitch,
+      m22: sin_yaw * sin_pitch * sin_roll + cos_yaw * cos_roll,
+      m23: sin_yaw * sin_pitch * cos_roll - cos_yaw * sin_roll,
+      m31: -sin_pitch,
+      m32: cos_pitch * sin_roll,
+      m33: cos_pitch * cos_roll
     }
   end
 end
