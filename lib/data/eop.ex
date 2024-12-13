@@ -20,7 +20,14 @@ defmodule SpaceDust.Data.EOP do
 
   # this pulls the dEps, dPsi data from the IERS
   @eopDataUrl "https://datacenter.iers.org/data/latestVersion/EOP_20_C04_12h_dPsi_dEps_1984-now.txt"
-  @eopDataPath "eop_data.txt"
+  rootPath = Path.expand("../..", __DIR__)
+  @dataPath rootPath <> "/data"
+  @eopDataPath @dataPath <> "/eop_data.txt"
+
+  case File.exists?(@dataPath) do
+    true -> IO.puts("Data directory exists")
+    false -> File.mkdir(@dataPath)
+  end
 
   alias SpaceDust.Data.EarthOrientationParameters, as: EarthOrientationParameters
 
