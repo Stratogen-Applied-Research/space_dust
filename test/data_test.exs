@@ -42,4 +42,18 @@ defmodule DataTest do
     IO.inspect(%{parsed_eop_line: eopData})
     assert eopData != nil
   end
+
+  test "parse entire EOP data file" do
+    {:ok, rawEopData} = SpaceDust.Data.EOP.readSavedEopData()
+    {:ok, eopData} = SpaceDust.Data.EOP.parseEopData(rawEopData)
+    IO.inspect(%{parsed_eop_data: eopData})
+    assert eopData != nil
+  end
+
+  test "get EOP data at epoch" do
+    epoch = 60451.50
+    {:ok, eopData} = SpaceDust.Data.EOP.getEopData(epoch)
+    IO.inspect(%{eop_data_at_epoch: eopData})
+    assert eopData != nil
+  end
 end

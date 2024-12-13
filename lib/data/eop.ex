@@ -29,7 +29,9 @@ defmodule SpaceDust.Data.EOP do
     false -> File.mkdir(@dataPath)
   end
 
+  require Logger
   alias SpaceDust.Data.EarthOrientationParameters, as: EarthOrientationParameters
+  alias SpaceDust.Math.Functions, as: Functions
 
   @spec pullEOPData() :: {:error, String.t()} | {:ok, list()}
   @doc "pull EOP data from the IERS - realistically only needed once a year, or at container start"
@@ -119,6 +121,88 @@ defmodule SpaceDust.Data.EOP do
        }}
     rescue
       ArgumentError -> {:error, "Unable to parse EOP line"}
+    end
+  end
+
+  @doc "parse an entire EOP data file"
+  def parseEopData(lines) do
+    eopData =
+      for line <- lines do
+        case parseEopLine(line) do
+          {:ok, eop} -> eop
+          {:error, reason} -> IO.inspect(reason)
+        end
+      end
+      |> Enum.reject(&is_nil/1)
+
+    # check if we have any EOP data
+    case Enum.empty?(eopData) do
+      true -> {:error, "No EOP data found"}
+      false -> {:ok, eopData}
+    end
+  end
+
+  @doc "interpolate between two EOP data points at a given MJD"
+  def interpolateBetween(priorEop, futureEop, mjd) do
+    # calculate the fraction of the time between the two EOP data points
+    fraction =
+      (mjd - priorEop.modifiedJulianDate) /
+        (futureEop.modifiedJulianDate - priorEop.modifiedJulianDate)
+
+    # interpolate the EOP data
+    %EarthOrientationParameters{
+      modifiedJulianDate: mjd,
+      polarMotionX:
+        Functions.linearInterpolate(priorEop.polarMotionX, futureEop.polarMotionX, fraction),
+      polarMotionY:
+        Functions.linearInterpolate(priorEop.polarMotionY, futureEop.polarMotionY, fraction),
+      ut1UTC: Functions.linearInterpolate(priorEop.ut1UTC, futureEop.ut1UTC, fraction),
+      dPsi: Functions.linearInterpolate(priorEop.dPsi, futureEop.dPsi, fraction),
+      dEps: Functions.linearInterpolate(priorEop.dEps, futureEop.dEps, fraction),
+      lod: Functions.linearInterpolate(priorEop.lod, futureEop.lod, fraction)
+    }
+  end
+
+  @doc "get the EOP data at a given MJD, interpolating between the closest two data points"
+  def getEopData(mjd) do
+    case readSavedEopData() do
+      {:ok, rawEopData} ->
+        case parseEopData(rawEopData) do
+          {:ok, eopData} ->
+            # sort
+            sortedData = Enum.sort_by(eopData, & &1.modifiedJulianDate)
+
+            Enum.find(sortedData, fn eop -> eop.modifiedJulianDate >= mjd end)
+            |> case do
+              nil ->
+                Logger.warning("MJD #{mjd} is after the last EOP data point")
+                {:ok, Enum.at(sortedData, -1)}
+
+              %EarthOrientationParameters{} = futureEop ->
+                Enum.find(sortedData, fn eop -> eop.modifiedJulianDate < mjd end)
+                |> case do
+                  nil ->
+                    Logger.warning("MJD #{mjd} is before the first EOP data point")
+                    {:ok, Enum.at(sortedData, 0)}
+
+                  %EarthOrientationParameters{} = priorEop ->
+                    {:ok, interpolateBetween(priorEop, futureEop, mjd)}
+
+                  _ ->
+                    {:error, "Unable to find EOP data"}
+                end
+
+              _ ->
+                {:error, "Unable to find EOP data"}
+            end
+
+          {:error, reason} ->
+            Logger.error(reason)
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        IO.inspect(reason)
     end
   end
 end
