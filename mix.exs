@@ -9,6 +9,7 @@ defmodule SpaceDust.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       package: package(),
+      name: "Space Dust",
       source_url: "https://github.com/Stratogen-Applied-Research/space_dust",
       description: description()
     ]
@@ -38,8 +39,8 @@ defmodule SpaceDust.MixProject do
   defp package do
     [
       name: "space_dust",
-      organization: "Stratogen Applied Research",
       licenses: ["MIT"],
+      files: ~w(lib .formatter.exs mix.exs README* LICENSE*),
       links: %{"GitHub" => "https://github.com/Stratogen-Applied-Research/space_dust"}
     ]
   end
