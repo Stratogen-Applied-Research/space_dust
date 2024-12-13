@@ -3,9 +3,8 @@ defmodule SpaceDust.State.StateTransforms do
   State vector transformations
   """
 
-  alias SpaceDust.State.StateVector, as: StateVector
-  alias SpaceDust.State.ReferenceFrame, as: ReferenceFrame
-  alias SpaceDust.Math.Vector, as: Vector
-
-  @spec
+  @doc "convert a state vector from true equator mean equinox (TEME) to ECI J2000"
+  def temeToEciJ2000(_stateVector, _utcEpoch) do
+    throw(:not_implemented)
+  end
 end

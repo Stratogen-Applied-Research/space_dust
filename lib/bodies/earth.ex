@@ -31,10 +31,9 @@ defmodule SpaceDust.Bodies.Earth do
   alias SpaceDust.Data.IAU1980, as: IAU1980
   alias SpaceDust.Data.IAU1980Data, as: IAU1980Data
   alias SpaceDust.Data.EOP, as: EOP
-  alias SpaceDust.Data.EarthOrientationParameters, as: EarthOrientationParameters
   alias SpaceDust.Time.TimeConversions, as: TimeConversions
 
-  @doc "'zeta' coefficients for earth precession"
+  # doc "'zeta' coefficients for earth precession"
   defp zetaPoly do
     [
       0.017988 * Constants.arcsecToRadians(),
@@ -44,7 +43,7 @@ defmodule SpaceDust.Bodies.Earth do
     ]
   end
 
-  @doc "'theta' coefficients for earth precession"
+  # doc "'theta' coefficients for earth precession"
   defp thetaPoly do
     [
       -0.041833 * Constants.arcsecToRadians(),
@@ -54,7 +53,7 @@ defmodule SpaceDust.Bodies.Earth do
     ]
   end
 
-  @doc "'z' coefficients for earth precession"
+  # doc "'z' coefficients for earth precession"
   defp zPoly do
     [
       0.018203 * Constants.arcsecToRadians(),
@@ -64,7 +63,7 @@ defmodule SpaceDust.Bodies.Earth do
     ]
   end
 
-  @doc "earth nutation lunar anomaly poly coefficients"
+  # doc "earth nutation lunar anomaly poly coefficients"
   defp lunarAnomalyPoly do
     [
       1.78e-5 * Constants.degreesToRadians(),
@@ -74,7 +73,7 @@ defmodule SpaceDust.Bodies.Earth do
     ]
   end
 
-  @doc "earth nutation solar anomaly poly coefficients"
+  # doc "earth nutation solar anomaly poly coefficients"
   defp solarAnomalyPoly do
     [
       -3.3e-6 * Constants.degreesToRadians(),
@@ -84,7 +83,7 @@ defmodule SpaceDust.Bodies.Earth do
     ]
   end
 
-  @doc "earth nutation lunar latitude poly coefficients"
+  # doc "earth nutation lunar latitude poly coefficients"
   defp lunarLatitudePoly do
     [
       3.1e-6 * Constants.degreesToRadians(),
@@ -94,7 +93,7 @@ defmodule SpaceDust.Bodies.Earth do
     ]
   end
 
-  @doc "earth nutation sun elongation poly coefficients"
+  # doc "earth nutation sun elongation poly coefficients"
   defp sunElongationPoly do
     [
       5.3e-6 * Constants.degreesToRadians(),
@@ -104,7 +103,7 @@ defmodule SpaceDust.Bodies.Earth do
     ]
   end
 
-  @doc "earth nutation linar right ascension poly coefficients"
+  # doc "earth nutation linar right ascension poly coefficients"
   defp lunarRaanPoly do
     [
       2.2e-6 * Constants.degreesToRadians(),
@@ -114,7 +113,7 @@ defmodule SpaceDust.Bodies.Earth do
     ]
   end
 
-  @doc "earth nutation mean epsilon poly coefficients"
+  # doc "earth nutation mean epsilon poly coefficients"
   defp meanEpsilonPoly do
     [
       5.04e-7 * Constants.degreesToRadians(),
@@ -181,7 +180,7 @@ defmodule SpaceDust.Bodies.Earth do
     }
   end
 
-  @doc "compute deltaPsi and deltaEpsilon from IAU 1980 nutation theory"
+  # doc "compute deltaPsi and deltaEpsilon from IAU 1980 nutation theory"
   defp iauToNutationAngles(
          iau1980,
          lunarAnomaly,
@@ -206,9 +205,6 @@ defmodule SpaceDust.Bodies.Earth do
         deltaPsi = sinC * :math.sin(arg)
         deltaEpsilon = cosC * :math.cos(arg)
         {deltaPsi, deltaEpsilon}
-
-      _ ->
-        raise ArgumentError, "Invalid IAU 1980 data"
     end
   end
 
