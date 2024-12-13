@@ -79,7 +79,6 @@ defmodule SpaceDust.Data.EOP do
     end
   end
 
-  @spec parseEopLine(String.t()) :: {:error, String.t()} | {:ok, EarthOrientationParameters.t()}
   def parseEopLine(line) do
     # line columns:
     # YR  MM  DD  HH       MJD        x(")        y(")  UT1-UTC(s)     dPsi(")     dEps(")      xrt(")      yrt(")      LOD(s)        x Er        y Er  UT1-UTC Er     dPsi Er     dEps Er      xrt Er      yrt Er      LOD Er

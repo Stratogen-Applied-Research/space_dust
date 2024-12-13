@@ -17,7 +17,7 @@ defmodule DataTest do
     eopLine =
       "1984   1   1  12  45700.50   -0.134064    0.093057   0.3968898    0.005644   -0.002799    0.034912   -0.041530   0.0014139    0.001250    0.000992   0.0002417    0.000876    0.000351    0.001226    0.000991   0.0000730"
 
-    eop = SpaceDust.Data.EOP.parseEopLine(eopLine)
+    {:ok, eop} = SpaceDust.Data.EOP.parseEopLine(eopLine)
     IO.inspect(eop)
     assert eop.modifiedJulianDate == 45700.50
     assert eop.polarMotionX == -0.134064
