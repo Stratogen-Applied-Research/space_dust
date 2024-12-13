@@ -7,7 +7,10 @@ defmodule SpaceDust.MixProject do
       version: "0.1.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      package: package(),
+      source_url: "https://github.com/Stratogen-Applied-Research/space_dust",
+      description: description()
     ]
   end
 
@@ -21,9 +24,23 @@ defmodule SpaceDust.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:req, "~>0.5.8"}
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
+      {:req, "~>0.5.8"},
+      {:ex_doc, "~> 0.22", only: :dev, runtime: false}
+    ]
+  end
+
+  defp description do
+    """
+    Space Dust is an astrodynamics library written in Elixir.
+    """
+  end
+
+  defp package do
+    [
+      name: "space_dust",
+      organization: "Stratogen Applied Research",
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/Stratogen-Applied-Research/space_dust"}
     ]
   end
 end
