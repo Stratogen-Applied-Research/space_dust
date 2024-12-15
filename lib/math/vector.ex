@@ -113,4 +113,42 @@ defmodule SpaceDust.Math.Vector do
       z: a.x * m.m31 + a.y * m.m32 + a.z * m.m33
     }
   end
+
+  @spec rotateAroundAxis(vector(), vector(), number) :: vector()
+  @doc "rotate a 3D vector around an axis by an angle"
+  def rotateAroundAxis(a, axis, angle) do
+    c = :math.cos(angle)
+    s = :math.sin(angle)
+    t = 1 - c
+
+    %Vector3D{
+      x:
+        (t * axis.x * axis.x + c) * a.x + (t * axis.x * axis.y - s * axis.z) * a.y +
+          (t * axis.x * axis.z + s * axis.y) * a.z,
+      y:
+        (t * axis.x * axis.y + s * axis.z) * a.x + (t * axis.y * axis.y + c) * a.y +
+          (t * axis.y * axis.z - s * axis.x) * a.z,
+      z:
+        (t * axis.x * axis.z - s * axis.y) * a.x + (t * axis.y * axis.z + s * axis.x) * a.y +
+          (t * axis.z * axis.z + c) * a.z
+    }
+  end
+
+  @spec rotateZ(vector(), number) :: vector()
+  @doc "rotate a 3D vector about the z-axis"
+  def rotateZ(a, angle) do
+    rotateAroundAxis(a, fromList([0, 0, 1]), angle)
+  end
+
+  @spec rotateY(vector(), number) :: vector()
+  @doc "rotate a 3D vector about the y-axis"
+  def rotateY(a, angle) do
+    rotateAroundAxis(a, fromList([0, 1, 0]), angle)
+  end
+
+  @spec rotateX(vector(), number) :: vector()
+  @doc "rotate a 3D vector about the x-axis"
+  def rotateX(a, angle) do
+    rotateAroundAxis(a, fromList([1, 0, 0]), angle)
+  end
 end

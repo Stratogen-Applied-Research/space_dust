@@ -1,15 +1,6 @@
 defmodule SpaceDust.State.ReferenceFrame do
-  defmodule ECEF do
-    @type ecef() :: :ecef
-  end
-
-  defmodule ECI_J2000 do
-    @type eci_j2000() :: :eci
-  end
-
-  defmodule TEME do
-    @type teme() :: :teme
-  end
+  def eci_j2000, do: :eci_j2000
+  def teme, do: :teme
 end
 
 defmodule SpaceDust.State.StateVector do
