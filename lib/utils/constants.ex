@@ -1,4 +1,7 @@
 defmodule SpaceDust.Utils.Constants do
+  # basic math
+  def twopi, do: 2.0 * :math.pi()
+
   # angular conversions
   def degreesToRadians, do: :math.pi() / 180.0
   def radiansToDegrees, do: 180.0 / :math.pi()
