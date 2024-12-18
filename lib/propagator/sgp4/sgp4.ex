@@ -48,6 +48,11 @@ defmodule SpaceDust.Propagator.SGP4.SGP4 do
         rec,
         opsmode
       ) do
+    # create a copy of the satrec object to avoid mutation
+    recCopy = Map.from_struct(rec) |> Map.put(:__struct__, Satrec) |> struct()
+
+    # the original implementation from Dave/Bob/Felix is great but doesn't play nice with Elixir since it mutates the satrec object
+
     # Constants
     zns = 1.19459e-5
     zes = 0.01675
@@ -56,9 +61,10 @@ defmodule SpaceDust.Propagator.SGP4.SGP4 do
 
     # time-varying periodics
     zm =
-      case init do
-        "y" -> zmos + zns * t
-        _ -> zmol
+      if init == "y" do
+        zmos
+      else
+        zmos + zns * t
       end
 
     zf = zm + 2.0 * zes * :math.sin(zm)
@@ -70,12 +76,13 @@ defmodule SpaceDust.Propagator.SGP4.SGP4 do
     sls = sl2 * f2 + sl3 * f3 + sl4 * sinzf
     sghs = sgh2 * f2 + sgh3 * f3 + sgh4 * sinzf
     shs = sh2 * f2 + sh3 * f3
-    zm = zmol + znl * t
 
-    # change this so zm is immutable
-    if init == "y" do
-      zm = zmol
-    end
+    zm =
+      if init == "y" do
+        zmol
+      else
+        zmol + znl * t
+      end
 
     zf = zm + 2.0 * zel * :math.sin(zm)
 
@@ -110,6 +117,15 @@ defmodule SpaceDust.Propagator.SGP4.SGP4 do
         recArgpp = rec.argpp + pgh
         recNodep = rec.nodep + ph
         recMp = rec.mp + pl
+
+        # modify the recCopy to include the new values
+        Map.put(recCopy, :inclp, recInclpModified)
+        |> Map.put(:ep, recEpModified)
+        |> Map.put(:argpp, recArgpp)
+        |> Map.put(:nodep, recNodep)
+        |> Map.put(:mp, recMp)
+
+        # RETURN HERE
       else
         sinop = :math.sin(rec.nodep)
         cosop = :math.cos(rec.nodep)
@@ -143,19 +159,31 @@ defmodule SpaceDust.Propagator.SGP4.SGP4 do
           end
 
         recNodepFinal =
-          if :math.fabs(xnoh - recNodepModified) > :math.pi() do
+          if abs(xnoh - recNodepModified) > :math.pi() do
             if recNodepModified < xnoh do
               recNodepModified + Constants.twopi()
             else
               recNodepModified - Constants.twopi()
             end
-
-            recMp = rec.mp + pl
-            recArgpp = xls - rec.mp - cosip * recNodepModified
           end
-      end
-    end
 
-    # TODO: output final (modified) satrec
+        recMp = rec.mp + pl
+        recArgpp = xls - rec.mp - cosip * recNodepModified
+
+        # modify the recCopy to include the new values
+        Map.put(recCopy, :inclp, recInclpModified)
+        |> Map.put(:ep, recEpModified)
+        |> Map.put(:nodep, recNodepFinal)
+        |> Map.put(:argpp, recArgpp)
+        |> Map.put(:mp, recMp)
+
+        # RETURN HERE
+      end
+    else
+      # if init == "y" we don't need to modify the recCopy
+      recCopy
+
+      # RETURN HERE
+    end
   end
 end
