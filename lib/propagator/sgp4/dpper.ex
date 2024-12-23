@@ -11,6 +11,7 @@ defmodule SpaceDust.Propagator.SGP4.Dpper do
   inputs:
    -
   """
+  # TODO: clean up the inputs on this- we already use the rec struct
   def dpper(
         e3,
         ee2,

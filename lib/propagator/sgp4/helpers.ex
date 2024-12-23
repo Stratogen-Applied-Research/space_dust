@@ -4,7 +4,7 @@ defmodule SpaceDust.Propagator.SGP4.Helpers do
   @doc """
   set the gravitational constants for a satrec given the wgs type
   """
-  def getgravconst(whichconst, rec) do
+  def getgravconst(rec, whichconst) do
     recCopy =
       Map.from_struct(rec)
       |> Map.put(:__struct__, Satrec)

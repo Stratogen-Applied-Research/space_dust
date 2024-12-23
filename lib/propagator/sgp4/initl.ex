@@ -1,7 +1,7 @@
 defmodule SpaceDust.Propagator.SGP4.Initl do
   alias SpaceDust.Propagator.SGP4.Helpers, as: Helpers
 
-  def initl(epoch, rec) do
+  def initl(rec, epoch) do
     x2o3 = 2.0 / 3.0
 
     recCopy =
