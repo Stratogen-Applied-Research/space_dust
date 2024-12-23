@@ -3,7 +3,7 @@ defmodule SpaceDust.Propagator.SGP4.SGP4 do
   alias SpaceDust.Utils.Constants, as: Constants
   alias SpaceDust.Propagator.SGP4.Dpper, as: Dpper
 
-  def sgp4(satrec, tsince, _r, _v) do
+  def sgp4(satrec, tsince) do
     temp4 = 1.5e-12
     x2o3 = 2.0 / 3.0
 
