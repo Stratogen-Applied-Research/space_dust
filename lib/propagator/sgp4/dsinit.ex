@@ -240,18 +240,27 @@ defmodule SpaceDust.Propagator.SGP4.Dsinit do
             f330 = 1.0 + recCopy.cosim
             f330 = 1.875 * f330 * f330 * f330
 
-            Map.put(recCopy, :del1, 3.0 * recCopy.nm * recCopy.nm * aonv * aonv)
-            |> Map.put(:del2, 2.0 * recCopy.del1 * f220 * g200 * q22)
-            |> Map.put(:del3, 3.0 * recCopy.del1 * f330 * g300 * q33 * aonv)
-            |> Map.put(
-              :del1,
-              recCopy.del1 + recCopy.del1 + recCopy.dndt * f311 * g310 * q31 * aonv
-            )
-            |> Map.put(
-              :xlamo,
-              :math.fmod(recCopy.mo + recCopy.nodeo + recCopy.argpo - theta, Constants.twopi())
-            )
-            |> Map.put(
+            # no pipe operator here because we need to use updated keys
+            recCopy = Map.put(recCopy, :del1, 3.0 * recCopy.nm * recCopy.nm * aonv * aonv)
+            recCopy = Map.put(recCopy, :del2, 2.0 * recCopy.del1 * f220 * g200 * q22)
+            recCopy = Map.put(recCopy, :del3, 3.0 * recCopy.del1 * f330 * g300 * q33 * aonv)
+
+            recCopy =
+              Map.put(
+                recCopy,
+                :del1,
+                recCopy.del1 + recCopy.del1 + recCopy.dndt * f311 * g310 * q31 * aonv
+              )
+
+            recCopy =
+              Map.put(
+                recCopy,
+                :xlamo,
+                :math.fmod(recCopy.mo + recCopy.nodeo + recCopy.argpo - theta, Constants.twopi())
+              )
+
+            Map.put(
+              recCopy,
               :xfact,
               recCopy.mdot + xpidot - rptim + recCopy.dmdt + recCopy.domdt + recCopy.dnodt -
                 recCopy.no_unkozai
