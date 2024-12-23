@@ -398,7 +398,7 @@ defmodule SpaceDust.Propagator.SGP4.SGP4init do
     r = [0.0, 0.0, 0.0]
     v = [0.0, 0.0, 0.0]
 
-    recCopy =
+    {_r, _v, recCopy} =
       SGP4.sgp4(recCopy, 0.0, r, v)
       |> Map.put(:init, "n")
 

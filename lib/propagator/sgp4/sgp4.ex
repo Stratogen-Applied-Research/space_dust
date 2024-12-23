@@ -283,7 +283,7 @@ defmodule SpaceDust.Propagator.SGP4.SGP4 do
       Logger.error("SGP4 error type 6 - satellite decayed")
     end
 
-    {r, v}
+    {r, v, recCopy}
   end
 
   # solve for eccentric anomaly
