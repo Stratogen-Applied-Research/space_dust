@@ -3,6 +3,10 @@ defmodule SpaceDust.Utils.Tle do
   Utility functions for parsing two-line element sets (TLEs)
   """
 
+  require Logger
+  alias SpaceDust.Propagator.SGP4.Satrec, as: Satrec
+  alias SpaceDust.Propagator.SGP4.SGP4, as: SGP4
+  alias SpaceDust.Propagator.SGP4.SGP4init, as: SGP4init
   alias SpaceDust.Utils.TwoLineElementSet, as: TwoLineElementSet
   alias SpaceDust.Utils.Constants, as: Constants
 
@@ -94,5 +98,49 @@ defmodule SpaceDust.Utils.Tle do
       _ ->
         {:error, "Unable to parse TLE- line length is incorrect"}
     end
+  end
+
+  defp twoLineElsetToSatrec(twoLineElementSet) do
+    # convert a TwoLineElementSet to a Satrec
+    xdotp = 1440.0 / Constants.twopi()
+
+    satrec = %Satrec{
+      elnum: twoLineElementSet.elementSetNumber,
+      revnum: twoLineElementSet.revNumber,
+      classification: twoLineElementSet.classification,
+      intldesg: twoLineElementSet.internationalDesignator,
+      bstar: twoLineElementSet.bStar,
+      satnum: twoLineElementSet.catalogNumber,
+      inclo: twoLineElementSet.inclinationDeg * Constants.degreesToRadians(),
+      nodeo: twoLineElementSet.raanDeg * Constants.degreesToRadians(),
+      argpo: twoLineElementSet.argPerigeeDeg * Constants.degreesToRadians(),
+      mo: twoLineElementSet.meanAnomalyDeg * Constants.degreesToRadians(),
+      ecco: twoLineElementSet.eccentricity,
+      no_kozai: twoLineElementSet.meanMotion * xdotp,
+      ndot: twoLineElementSet.meanMotionDot / (xdotp * 1440.0),
+      nddot: twoLineElementSet.meanMotionDoubleDot / (xdotp * 1440.0 * 1440.0)
+    }
+
+    case SGP4init.sgp4init("a", satrec) do
+      {:ok, satrec} ->
+        satrec
+
+      {:error, _} ->
+        Logger.warning("Error initializing SGP4")
+        nil
+    end
+  end
+
+  @doc """
+  Get the position and velocity (in the TEME frame) of a satellite at a given time
+  """
+  def getRVatTime(twoLineElementSet, utcEpoch) do
+    satrec = twoLineElsetToSatrec(twoLineElementSet)
+
+    minutesSinceEpoch =
+      DateTime.diff(utcEpoch, twoLineElementSet.epoch, :microsecond) / 1_000_000 / 60
+
+    {r, v, _} = SGP4.sgp4(satrec, minutesSinceEpoch)
+    {r, v}
   end
 end
