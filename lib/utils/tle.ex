@@ -105,6 +105,9 @@ defmodule SpaceDust.Utils.Tle do
     xdotp = 1440.0 / Constants.twopi()
 
     satrec = %Satrec{
+      jdsatepoch: 0.0,
+      jdsatepochF: 0.0,
+      whichconst: :wgs84,
       elnum: twoLineElementSet.elementSetNumber,
       revnum: twoLineElementSet.revNumber,
       classification: twoLineElementSet.classification,
@@ -121,14 +124,8 @@ defmodule SpaceDust.Utils.Tle do
       nddot: twoLineElementSet.meanMotionDoubleDot / (xdotp * 1440.0 * 1440.0)
     }
 
-    case SGP4init.sgp4init("a", satrec) do
-      {:ok, satrec} ->
-        satrec
-
-      {:error, _} ->
-        Logger.warning("Error initializing SGP4")
-        nil
-    end
+    {:ok, satrec} = SGP4init.sgp4init("a", satrec)
+    satrec
   end
 
   @doc """
