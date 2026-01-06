@@ -245,7 +245,7 @@ defmodule SpaceDust.Bodies.Earth do
       case useEop do
         true ->
           {:ok, eopData} =
-            UTC.to_jd(utc)
+            UTC.to_mjd(utc)
             |> EOPCache.get()
 
           {deltaPsiRad + eopData.dPsi, deltaEpsilonRad + eopData.dEps}
