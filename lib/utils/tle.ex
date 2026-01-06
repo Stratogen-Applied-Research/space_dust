@@ -1,6 +1,40 @@
 defmodule SpaceDust.Utils.Tle do
   @moduledoc """
-  Utility functions for parsing two-line element sets (TLEs)
+  Parsing and propagation utilities for Two-Line Element Sets (TLEs).
+
+  This module provides functions to:
+  - Parse TLE strings into structured data
+  - Propagate TLEs to compute satellite position/velocity at any time
+
+  ## TLE Format
+
+  A TLE consists of two 69-character lines containing orbital elements in a
+  fixed-width format. The format is standardized by NORAD/USSPACECOM.
+
+  ## SGP4 Propagation
+
+  TLE propagation uses the SGP4 (Simplified General Perturbations 4) algorithm,
+  which accounts for:
+  - Earth's oblateness (J2 perturbation)
+  - Atmospheric drag
+  - Solar/lunar gravitational effects (for high-altitude orbits)
+
+  The output is in the TEME (True Equator Mean Equinox) reference frame,
+  which can be converted to ECI J2000 using `SpaceDust.State.Transforms`.
+
+  ## Example
+
+      # Parse a TLE
+      line1 = "1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9002"
+      line2 = "2 25544  51.6400 208.1200 0001234  85.0000 275.0000 15.48919100123456"
+      {:ok, tle} = SpaceDust.Utils.Tle.parseTLE(line1, line2)
+
+      # Propagate to a future time
+      epoch = ~U[2024-01-02 12:00:00Z]
+      {position, velocity} = SpaceDust.Utils.Tle.getRVatTime(tle, epoch)
+      # position is {x, y, z} in km
+      # velocity is {vx, vy, vz} in km/s
+
   """
 
   require Logger
@@ -9,7 +43,27 @@ defmodule SpaceDust.Utils.Tle do
 
   @microsecondsPerDay Constants.secondsPerDay() * 1_000_000
 
-  @doc "parse a two line element set (TLE) from a string"
+  @doc """
+  Parse a Two-Line Element set from its string representation.
+
+  ## Parameters
+
+    - `line1` - First line of the TLE (69 characters)
+    - `line2` - Second line of the TLE (69 characters)
+
+  ## Returns
+
+    - `{:ok, %TwoLineElementSet{}}` - Successfully parsed TLE
+    - `{:error, reason}` - Parsing failed
+
+  ## Example
+
+      line1 = "1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9002"
+      line2 = "2 25544  51.6400 208.1200 0001234  85.0000 275.0000 15.48919100123456"
+      {:ok, tle} = SpaceDust.Utils.Tle.parseTLE(line1, line2)
+
+  """
+  @spec parseTLE(String.t(), String.t()) :: {:ok, TwoLineElementSet.t()} | {:error, String.t()}
   def parseTLE(line1, line2) do
     # check to ensure each line is 69 characters
     case {String.length(line1), String.length(line2)} do
@@ -98,9 +152,39 @@ defmodule SpaceDust.Utils.Tle do
   end
 
   @doc """
-  Get the position and velocity (in the TEME frame) of a satellite at a given time.
-  Uses the sgp4_ex library for fast NIF-based propagation.
+  Propagate a TLE to compute position and velocity at a given epoch.
+
+  Uses the SGP4 algorithm via the sgp4_ex library (native C++ implementation)
+  for fast and accurate propagation. The output is in the TEME reference frame.
+
+  ## Parameters
+
+    - `twoLineElementSet` - Parsed TLE from `parseTLE/2`
+    - `utcEpoch` - Target time as a DateTime in UTC
+
+  ## Returns
+
+    - `{{x, y, z}, {vx, vy, vz}}` - Position (km) and velocity (km/s) in TEME frame
+    - `{:error, reason}` - Propagation failed
+
+  ## Example
+
+      {:ok, tle} = SpaceDust.Utils.Tle.parseTLE(line1, line2)
+      {position, velocity} = SpaceDust.Utils.Tle.getRVatTime(tle, ~U[2024-01-15 12:00:00Z])
+
+      # Convert to ECI J2000 for further calculations
+      teme = SpaceDust.State.TEMEState.new(epoch, position, velocity)
+      eci = SpaceDust.State.Transforms.teme_to_eci(teme)
+
+  ## Notes
+
+    - Propagation accuracy degrades as time increases from the TLE epoch
+    - TLEs are typically valid for a few days before/after their epoch
+    - For best results, use the most recent TLE available
+
   """
+  @spec getRVatTime(TwoLineElementSet.t(), DateTime.t()) ::
+          {{float(), float(), float()}, {float(), float(), float()}} | {:error, term()}
   def getRVatTime(twoLineElementSet, utcEpoch) do
     case Sgp4Ex.parse_tle(twoLineElementSet.line1, twoLineElementSet.line2) do
       {:ok, sgp4_tle} ->

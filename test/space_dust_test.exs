@@ -2,7 +2,7 @@ defmodule SpaceDustTest do
   use ExUnit.Case
   doctest SpaceDust
 
-  test "greets the world" do
-    assert SpaceDust.hello() == :world
+  test "returns version" do
+    assert SpaceDust.version() == "0.2.0"
   end
 end
