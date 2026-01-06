@@ -1,6 +1,24 @@
 defmodule SpaceDust.Ingest.Celestrak do
   @moduledoc """
-  Module for ingesting TLE data from Celestrak.
+  Client for retrieving Two-Line Element (TLE) data from Celestrak.
+
+  Celestrak is a public service that provides NORAD two-line element sets
+  for satellites. This module provides functions to fetch the latest TLE
+  data for specific satellites by their NORAD catalog number.
+
+  ## Example
+
+      # Fetch TLE for the International Space Station (NORAD ID: 25544)
+      {:ok, tle} = SpaceDust.Ingest.Celestrak.pullLatestTLE("25544")
+
+      # Fetch TLE for a geostationary satellite
+      {:ok, tle} = SpaceDust.Ingest.Celestrak.pullLatestTLE("40425")
+
+  ## Notes
+
+  - Requires network access to celestrak.com
+  - TLEs are typically updated several times per day
+  - NORAD catalog numbers can be found at space-track.org or celestrak.com
   """
 
   alias SpaceDust.Utils.Tle, as: TLE
@@ -9,7 +27,26 @@ defmodule SpaceDust.Ingest.Celestrak do
   @targetIdSpecifier "CATNR="
   @tleSpecifier "&FORMAT=TLE"
 
-  @doc "pull the latest TLE for a given target id from Celestrak"
+  @doc """
+  Fetch the latest TLE for a satellite from Celestrak.
+
+  ## Parameters
+
+    - `targetId` - NORAD catalog number as a string (e.g., "25544" for ISS)
+
+  ## Returns
+
+    - `{:ok, %TwoLineElementSet{}}` - Successfully retrieved and parsed TLE
+    - `{:error, reason}` - Failed to retrieve or parse TLE
+
+  ## Example
+
+      iex> {:ok, tle} = SpaceDust.Ingest.Celestrak.pullLatestTLE("25544")
+      iex> tle.inclinationDeg
+      51.6...
+
+  """
+  @spec pullLatestTLE(String.t()) :: {:ok, SpaceDust.Utils.TwoLineElementSet.t()} | {:error, String.t()}
   def pullLatestTLE(targetId) do
     response = Req.get!(@baseUrl <> @targetIdSpecifier <> targetId <> @tleSpecifier)
 
