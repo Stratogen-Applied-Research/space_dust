@@ -32,18 +32,20 @@ defmodule SpaceDust.Data.LeapSecond do
 
   @spec julianDateToLeapSeconds(float()) :: integer()
   def julianDateToLeapSeconds(julianDate) do
-    # find the value at the first key that us less than the julian date
-    leapSecondIndex =
-      Enum.find_index(@julianDateLeapSeconds, fn {key, _} -> key > julianDate end) - 1
-
-    leapSeconds = Enum.at(@julianDateLeapSeconds, leapSecondIndex)
-
-    case leapSeconds do
+    # Find the value at the first key that is greater than the julian date
+    case Enum.find_index(@julianDateLeapSeconds, fn {key, _} -> key > julianDate end) do
       nil ->
-        IO.warn("No leap second data for julian date #{julianDate}! Returning default of 37")
-        37
+        # Date is after all entries, return the last known leap second value
+        {_, value} = List.last(@julianDateLeapSeconds)
+        value
 
-      {_, value} ->
+      0 ->
+        # Date is before all entries
+        IO.warn("Date before first leap second entry, returning 10")
+        10
+
+      index ->
+        {_, value} = Enum.at(@julianDateLeapSeconds, index - 1)
         value
     end
   end

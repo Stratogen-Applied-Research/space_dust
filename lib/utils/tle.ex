@@ -4,9 +4,6 @@ defmodule SpaceDust.Utils.Tle do
   """
 
   require Logger
-  alias SpaceDust.Propagator.SGP4.Satrec, as: Satrec
-  alias SpaceDust.Propagator.SGP4.SGP4, as: SGP4
-  alias SpaceDust.Propagator.SGP4.SGP4init, as: SGP4init
   alias SpaceDust.Utils.TwoLineElementSet, as: TwoLineElementSet
   alias SpaceDust.Utils.Constants, as: Constants
 
@@ -100,44 +97,25 @@ defmodule SpaceDust.Utils.Tle do
     end
   end
 
-  defp twoLineElsetToSatrec(twoLineElementSet) do
-    # convert a TwoLineElementSet to a Satrec
-    xdotp = 1440.0 / Constants.twopi()
-
-    satrec = %Satrec{
-      jdsatepoch: 0.0,
-      jdsatepochF: 0.0,
-      whichconst: :wgs84,
-      elnum: twoLineElementSet.elementSetNumber,
-      revnum: twoLineElementSet.revNumber,
-      classification: twoLineElementSet.classification,
-      intldesg: twoLineElementSet.internationalDesignator,
-      bstar: twoLineElementSet.bStar,
-      satnum: twoLineElementSet.catalogNumber,
-      inclo: twoLineElementSet.inclinationDeg * Constants.degreesToRadians(),
-      nodeo: twoLineElementSet.raanDeg * Constants.degreesToRadians(),
-      argpo: twoLineElementSet.argPerigeeDeg * Constants.degreesToRadians(),
-      mo: twoLineElementSet.meanAnomalyDeg * Constants.degreesToRadians(),
-      ecco: twoLineElementSet.eccentricity,
-      no_kozai: twoLineElementSet.meanMotion * xdotp,
-      ndot: twoLineElementSet.meanMotionDot / (xdotp * 1440.0),
-      nddot: twoLineElementSet.meanMotionDoubleDot / (xdotp * 1440.0 * 1440.0)
-    }
-
-    {:ok, satrec} = SGP4init.sgp4init("a", satrec)
-    satrec
-  end
-
   @doc """
-  Get the position and velocity (in the TEME frame) of a satellite at a given time
+  Get the position and velocity (in the TEME frame) of a satellite at a given time.
+  Uses the sgp4_ex library for fast NIF-based propagation.
   """
   def getRVatTime(twoLineElementSet, utcEpoch) do
-    satrec = twoLineElsetToSatrec(twoLineElementSet)
+    case Sgp4Ex.parse_tle(twoLineElementSet.line1, twoLineElementSet.line2) do
+      {:ok, sgp4_tle} ->
+        case Sgp4Ex.propagate_tle_to_epoch(sgp4_tle, utcEpoch) do
+          {:ok, %Sgp4Ex.TemeState{position: {rx, ry, rz}, velocity: {vx, vy, vz}}} ->
+            {{rx, ry, rz}, {vx, vy, vz}}
 
-    minutesSinceEpoch =
-      DateTime.diff(utcEpoch, twoLineElementSet.epoch, :microsecond) / 1_000_000 / 60
+          {:error, reason} ->
+            Logger.error("SGP4 propagation failed: #{reason}")
+            {:error, reason}
+        end
 
-    {r, v, _} = SGP4.sgp4(satrec, minutesSinceEpoch)
-    {r, v}
+      {:error, reason} ->
+        Logger.error("Failed to parse TLE: #{reason}")
+        {:error, reason}
+    end
   end
 end
