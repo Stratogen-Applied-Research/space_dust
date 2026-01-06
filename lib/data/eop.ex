@@ -2,6 +2,17 @@ defmodule SpaceDust.Data.EarthOrientationParameters do
   @moduledoc """
   Parameters required to compute the CRS-TRS transformation matrix
   """
+
+  @type t :: %__MODULE__{
+          modifiedJulianDate: float() | nil,
+          polarMotionX: float() | nil,
+          polarMotionY: float() | nil,
+          ut1UTC: float() | nil,
+          lod: float() | nil,
+          dEps: float() | nil,
+          dPsi: float() | nil
+        }
+
   defstruct [
     :modifiedJulianDate,
     :polarMotionX,
@@ -16,10 +27,13 @@ end
 defmodule SpaceDust.Data.EOP do
   @moduledoc """
   Earth Orientation Parameters (EOP) data - ref https://hpiers.obspm.fr/eoppc/bul/bulb/explanatory.html
+
+  Uses the IERS finals.all data which includes both historical observations (marked 'I')
+  and predictions up to ~1 year into the future (marked 'P').
   """
 
-  # this pulls the dEps, dPsi data from the IERS
-  @eopDataUrl "https://datacenter.iers.org/data/latestVersion/EOP_20_C04_12h_dPsi_dEps_1984-now.txt"
+  # finals.all contains historical + predicted EOP data (predictions ~1 year ahead)
+  @eopDataUrl "https://datacenter.iers.org/data/latestVersion/finals.all.iau2000.txt"
   rootPath = Path.expand("../..", __DIR__)
   @dataPath rootPath <> "/data"
   @eopDataPath @dataPath <> "/eop_data.txt"
@@ -37,7 +51,6 @@ defmodule SpaceDust.Data.EOP do
   @doc "pull EOP data from the IERS - realistically only needed once a year, or at container start"
   def pullEOPData() do
     response = Req.get!(@eopDataUrl)
-    IO.inspect(response)
 
     case response.status do
       200 ->
@@ -89,51 +102,125 @@ defmodule SpaceDust.Data.EOP do
   end
 
   def parseEopLine(line) do
-    # line columns:
-    # YR  MM  DD  HH       MJD        x(")        y(")  UT1-UTC(s)     dPsi(")     dEps(")      xrt(")      yrt(")      LOD(s)        x Er        y Er  UT1-UTC Er     dPsi Er     dEps Er      xrt Er      yrt Er      LOD Er
-    # we want MJD, X, Y, UT1-UTC, dPsi, dEps, LOD
+    # finals.all format parsing
+    # The date fields (year, month, day) at the start can vary in format,
+    # but the MJD and subsequent fields are space-separated in a consistent pattern.
+    #
+    # Note: Sometimes the I/P flag is concatenated with negative values like "I-0.4575789"
+    # We pre-process to add spaces before I/P flags to handle this.
+    #
+    # After MJD, the pattern is:
+    #   [MJD] [flag] [PM-x] [PM-x err] [PM-y] [PM-y err] [flag] [UT1-UTC] [UT1-UTC err] [LOD] [LOD err] [flag] [dPSI] [dPSI err] [dEPS] [dEPS err] ...
 
     try do
-      # split the line into columns
-      columns =
-        String.split(line, " ")
-        # remove empty columns
-        |> Enum.reject(&(&1 == ""))
+      # Pre-process: Add space before I or P that's followed by a digit or minus sign
+      # This handles cases like "I-0.4575789" -> "I -0.4575789"
+      normalized_line = line
+        |> String.replace(~r/([IP])(-?\d)/, "\\1 \\2")
 
-      # extract the columns we want
-      mjd = String.to_float(Enum.at(columns, 4))
-      x = String.to_float(Enum.at(columns, 5))
-      y = String.to_float(Enum.at(columns, 6))
-      ut1UTC = String.to_float(Enum.at(columns, 7))
-      dPsi = String.to_float(Enum.at(columns, 8))
-      dEps = String.to_float(Enum.at(columns, 9))
-      lod = String.to_float(Enum.at(columns, 12))
+      # Split by whitespace
+      parts = String.split(normalized_line, ~r/\s+/, trim: true)
 
-      {:ok,
-       %EarthOrientationParameters{
-         modifiedJulianDate: mjd,
-         polarMotionX: x,
-         polarMotionY: y,
-         ut1UTC: ut1UTC,
-         dPsi: dPsi,
-         dEps: dEps,
-         lod: lod
-       }}
+      # Find the MJD field (matches pattern like 41684.00 or 60681.00)
+      # Must contain decimal point to distinguish from date fields like "41010"
+      mjd_idx = Enum.find_index(parts, fn p ->
+        String.contains?(p, ".") and
+        case Float.parse(p) do
+          {val, ""} -> val > 40000 and val < 70000  # MJD range: ~1970 to ~2050
+          _ -> false
+        end
+      end)
+
+      if mjd_idx == nil or length(parts) < mjd_idx + 9 do
+        {:error, "Cannot find MJD or line too short"}
+      else
+        # Parse fields relative to MJD position
+        mjd = parse_float(Enum.at(parts, mjd_idx))
+        # Skip flag at mjd_idx + 1
+        pm_x = parse_float(Enum.at(parts, mjd_idx + 2))
+        # Skip PM-x error at mjd_idx + 3
+        pm_y = parse_float(Enum.at(parts, mjd_idx + 4))
+        # Skip PM-y error at mjd_idx + 5
+        # Skip flag at mjd_idx + 6
+        ut1_utc = parse_float(Enum.at(parts, mjd_idx + 7))
+        # Skip UT1-UTC error at mjd_idx + 8
+
+        # LOD is at mjd_idx + 9, but may be missing or be the nutation flag
+        lod_raw = Enum.at(parts, mjd_idx + 9)
+        {lod, next_offset} = case lod_raw do
+          nil -> {0.0, 10}
+          "I" -> {0.0, 9}   # This is actually the nutation flag
+          "P" -> {0.0, 9}   # This is actually the nutation flag
+          str ->
+            case parse_float(str) do
+              nil -> {0.0, 10}
+              val -> {val / 1000.0, 11}  # Convert ms to s, skip LOD error
+            end
+        end
+
+        # Find nutation values - look for next I/P flag after LOD
+        nutation_flag_idx = mjd_idx + next_offset
+        flag_val = Enum.at(parts, nutation_flag_idx)
+
+        {dpsi, deps} = if flag_val in ["I", "P"] and length(parts) > nutation_flag_idx + 4 do
+          dpsi_raw = parse_float(Enum.at(parts, nutation_flag_idx + 1))
+          # Skip dPSI error at nutation_flag_idx + 2
+          deps_raw = parse_float(Enum.at(parts, nutation_flag_idx + 3))
+
+          dpsi = case dpsi_raw do
+            nil -> 0.0
+            val -> val / 1000.0  # Convert mas to arcsec
+          end
+
+          deps = case deps_raw do
+            nil -> 0.0
+            val -> val / 1000.0  # Convert mas to arcsec
+          end
+
+          {dpsi, deps}
+        else
+          {0.0, 0.0}
+        end
+
+        if mjd != nil and pm_x != nil and pm_y != nil and ut1_utc != nil do
+          {:ok,
+           %EarthOrientationParameters{
+             modifiedJulianDate: mjd,
+             polarMotionX: pm_x,
+             polarMotionY: pm_y,
+             ut1UTC: ut1_utc,
+             dPsi: dpsi,
+             dEps: deps,
+             lod: lod
+           }}
+        else
+          {:error, "Unable to parse required EOP fields"}
+        end
+      end
     rescue
-      ArgumentError -> {:error, "Unable to parse EOP line"}
+      _ -> {:error, "Unable to parse EOP line"}
+    end
+  end
+
+  # Helper to safely parse floats, returning nil for empty/invalid strings
+  defp parse_float(""), do: nil
+  defp parse_float(str) do
+    case Float.parse(str) do
+      {val, _} -> val
+      :error -> nil
     end
   end
 
   @doc "parse an entire EOP data file"
   def parseEopData(lines) do
     eopData =
-      for line <- lines do
-        case parseEopLine(line) do
-          {:ok, eop} -> eop
-          {:error, reason} -> IO.inspect(reason)
-        end
-      end
-      |> Enum.reject(&is_nil/1)
+      lines
+      |> Enum.map(&parseEopLine/1)
+      |> Enum.filter(fn
+        {:ok, _eop} -> true
+        _ -> false
+      end)
+      |> Enum.map(fn {:ok, eop} -> eop end)
 
     # check if we have any EOP data
     case Enum.empty?(eopData) do

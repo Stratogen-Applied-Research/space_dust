@@ -21,18 +21,21 @@ defmodule DataTest do
 
   # EOP data tests
   test "parse EOP line" do
+    # Sample line from finals.all.iau2000.txt format
     eopLine =
-      "1984   1   1  12  45700.50   -0.134064    0.093057   0.3968898    0.005644   -0.002799    0.034912   -0.041530   0.0014139    0.001250    0.000992   0.0002417    0.000876    0.000351    0.001226    0.000991   0.0000730"
+      "73 1 2 41684.00 I  0.120733 0.009786  0.136966 0.015902  I 0.8084178 0.0002710  0.0000 0.1916  P    -0.766    0.199    -0.720    0.300"
 
     {:ok, eop} = SpaceDust.Data.EOP.parseEopLine(eopLine)
     IO.inspect(eop)
-    assert eop.modifiedJulianDate == 45700.50
-    assert eop.polarMotionX == -0.134064
-    assert eop.polarMotionY == 0.093057
-    assert eop.ut1UTC == 0.3968898
-    assert eop.dPsi == 0.005644
-    assert eop.dEps == -0.002799
-    assert eop.lod == 0.0014139
+    assert eop.modifiedJulianDate == 41684.0
+    assert eop.polarMotionX == 0.120733
+    assert eop.polarMotionY == 0.136966
+    assert eop.ut1UTC == 0.8084178
+    # dPsi and dEps are in milliarcsec, converted to arcsec (divide by 1000)
+    assert_in_delta eop.dPsi, -0.000766, 0.000001
+    assert_in_delta eop.dEps, -0.000720, 0.000001
+    # LOD is 0.0000 in this line (converted from ms to s)
+    assert eop.lod == 0.0
   end
 
   test "pull and save EOP data" do
