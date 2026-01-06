@@ -341,7 +341,7 @@ defmodule SpaceDust.Observations do
 
   @doc """
   Check if a target is visible from an observer (above horizon).
-  
+
   Options:
     - `:min_elevation` - Minimum elevation angle in degrees (default: 0.0)
   """

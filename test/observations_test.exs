@@ -315,7 +315,7 @@ defmodule ObservationsTest do
       # Use ISS position which gives a concrete Az/El
       target = ECIState.new(@epoch, @iss_position, @iss_velocity)
       az_el = Observations.compute_az_el(@boulder, target)
-      
+
       # is_visible? should agree with whether elevation > 0
       if AzEl.above_horizon?(az_el) do
         assert Observations.is_visible?(@boulder, target)
@@ -328,7 +328,7 @@ defmodule ObservationsTest do
       target = ECIState.new(@epoch, @iss_position, @iss_velocity)
       az_el = Observations.compute_az_el(@boulder, target)
       min_el = 10.0
-      
+
       if AzEl.above_elevation?(az_el, min_el) do
         assert Observations.is_visible?(@boulder, target, min_elevation: min_el)
       else
