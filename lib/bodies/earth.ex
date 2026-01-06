@@ -30,7 +30,7 @@ defmodule SpaceDust.Bodies.Earth do
   alias SpaceDust.Bodies.Earth.NutationAngles
   alias SpaceDust.Data.IAU1980, as: IAU1980
   alias SpaceDust.Data.IAU1980Data, as: IAU1980Data
-  alias SpaceDust.Data.EOP, as: EOP
+  alias SpaceDust.Data.EOPCache
   alias SpaceDust.Time.{UTC, Transforms, Epoch}
 
   # doc "'zeta' coefficients for earth precession"
@@ -246,7 +246,7 @@ defmodule SpaceDust.Bodies.Earth do
         true ->
           {:ok, eopData} =
             UTC.to_jd(utc)
-            |> EOP.getEopData()
+            |> EOPCache.get()
 
           {deltaPsiRad + eopData.dPsi, deltaEpsilonRad + eopData.dEps}
 

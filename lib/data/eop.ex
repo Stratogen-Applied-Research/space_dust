@@ -2,6 +2,17 @@ defmodule SpaceDust.Data.EarthOrientationParameters do
   @moduledoc """
   Parameters required to compute the CRS-TRS transformation matrix
   """
+
+  @type t :: %__MODULE__{
+          modifiedJulianDate: float() | nil,
+          polarMotionX: float() | nil,
+          polarMotionY: float() | nil,
+          ut1UTC: float() | nil,
+          lod: float() | nil,
+          dEps: float() | nil,
+          dPsi: float() | nil
+        }
+
   defstruct [
     :modifiedJulianDate,
     :polarMotionX,
@@ -19,7 +30,7 @@ defmodule SpaceDust.Data.EOP do
   """
 
   # this pulls the dEps, dPsi data from the IERS
-  @eopDataUrl "https://datacenter.iers.org/data/latestVersion/EOP_20_C04_12h_dPsi_dEps_1984-now.txt"
+  @eopDataUrl "https://datacenter.iers.org/data/latestVersion/EOP_20_C04_0h_dPsi_dEps_1962-now.txt"
   rootPath = Path.expand("../..", __DIR__)
   @dataPath rootPath <> "/data"
   @eopDataPath @dataPath <> "/eop_data.txt"
@@ -37,7 +48,6 @@ defmodule SpaceDust.Data.EOP do
   @doc "pull EOP data from the IERS - realistically only needed once a year, or at container start"
   def pullEOPData() do
     response = Req.get!(@eopDataUrl)
-    IO.inspect(response)
 
     case response.status do
       200 ->
