@@ -26,6 +26,7 @@ defmodule SpaceDust.MixProject do
   defp deps do
     [
       {:req, "~>0.5.8"},
+      {:sgp4_ex, "~> 0.2.0"},
       {:ex_doc, "~> 0.22", only: :dev, runtime: false}
     ]
   end
