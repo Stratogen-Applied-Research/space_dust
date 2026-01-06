@@ -31,7 +31,7 @@ defmodule SpaceDust.Bodies.Earth do
   alias SpaceDust.Data.IAU1980, as: IAU1980
   alias SpaceDust.Data.IAU1980Data, as: IAU1980Data
   alias SpaceDust.Data.EOP, as: EOP
-  alias SpaceDust.Time.TimeConversions, as: TimeConversions
+  alias SpaceDust.Time.{UTC, Transforms, Epoch}
 
   # doc "'zeta' coefficients for earth precession"
   defp zetaPoly do
@@ -167,8 +167,9 @@ defmodule SpaceDust.Bodies.Earth do
 
   @doc "calculate the precession angles for the earth"
   def precessionAngles(epochUtc) do
-    julianDate = TimeConversions.dateTimeToJulianDate(epochUtc)
-    t = (julianDate - Constants.j2000()) / 36525.0
+    utc = UTC.from_datetime(epochUtc)
+    julianDate = UTC.to_jd(utc)
+    t = (julianDate - Epoch.j2000_jd()) / 36525.0
     zeta = Math.polyEval(zetaPoly(), t)
     theta = Math.polyEval(thetaPoly(), t)
     z = Math.polyEval(zPoly(), t)
@@ -210,10 +211,9 @@ defmodule SpaceDust.Bodies.Earth do
 
   @doc "calculate the nutation angles for the earth"
   def nutationAngles(epochUtc, coeffs \\ 4, useEop \\ true) do
-    julianCenturies =
-      TimeConversions.utcToTT(epochUtc)
-      |> TimeConversions.dateTimeToJulianDate()
-      |> TimeConversions.julianDateToJulianCenturies()
+    utc = UTC.from_datetime(epochUtc)
+    tt = Transforms.utc_to_tt(utc)
+    julianCenturies = SpaceDust.Time.TT.julian_centuries_j2000(tt)
 
     lunarAnomaly = Math.polyEval(lunarAnomalyPoly(), julianCenturies)
     solarAnomaly = Math.polyEval(solarAnomalyPoly(), julianCenturies)
@@ -245,7 +245,7 @@ defmodule SpaceDust.Bodies.Earth do
       case useEop do
         true ->
           {:ok, eopData} =
-            TimeConversions.dateTimeToJulianDate(epochUtc)
+            UTC.to_jd(utc)
             |> EOP.getEopData()
 
           {deltaPsiRad + eopData.dPsi, deltaEpsilonRad + eopData.dEps}
@@ -257,12 +257,14 @@ defmodule SpaceDust.Bodies.Earth do
     meanEpsilon = Math.polyEval(meanEpsilonPoly(), julianCenturies)
     epsilon = meanEpsilon + finalDeltaEpsilon
 
+    gmst = Transforms.utc_to_gmst(utc)
+
     eqEq =
       finalDeltaPsi * :math.cos(epsilon) +
         0.00264 * Constants.arcsecToRadians() * :math.sin(lunarRaan) +
         0.000063 * Constants.arcsecToRadians() * :math.sin(2.0 * lunarRaan)
 
-    gast = TimeConversions.utcToGmstAngle(epochUtc) + eqEq
+    gast = SpaceDust.Time.GMST.to_radians(gmst) + eqEq
 
     %NutationAngles{
       dPsi: finalDeltaPsi,

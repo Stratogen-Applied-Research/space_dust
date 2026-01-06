@@ -8,7 +8,14 @@ defmodule DataTest do
   end
 
   test "incorrect JD returns default leap second" do
+    # JD before first leap second entry returns 10 (earliest value)
     leapSeconds = SpaceDust.Data.LeapSecond.julianDateToLeapSeconds(2_031.5)
+    assert leapSeconds == 10
+  end
+
+  test "JD after table returns latest leap second" do
+    # JD after all entries returns 37 (latest known value)
+    leapSeconds = SpaceDust.Data.LeapSecond.julianDateToLeapSeconds(2_500_000.0)
     assert leapSeconds == 37
   end
 
