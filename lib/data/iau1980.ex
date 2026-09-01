@@ -127,9 +127,25 @@ defmodule SpaceDust.Data.IAU1980 do
     [0, 1, 0, 1, 0, 1, 0, 0, 0]
   ]
 
-  def getCoefficients(rowIndex) do
-    row = Enum.at(@data, rowIndex)
+  @doc "number of terms in the IAU 1980 nutation series"
+  def termCount, do: length(@data)
 
+  @doc """
+  The whole series, as structs, in published order.
+
+  Prefer this over repeated `getCoefficients/1` when summing the series:
+  `Enum.at/2` on a list is O(n), so indexing term by term makes an O(n^2) loop
+  out of what should be a single pass.
+  """
+  def all do
+    Enum.map(@data, &toStruct/1)
+  end
+
+  def getCoefficients(rowIndex) do
+    @data |> Enum.at(rowIndex) |> toStruct()
+  end
+
+  defp toStruct(row) do
     %IAU1980Data{
       a1: Enum.at(row, 0),
       a2: Enum.at(row, 1),

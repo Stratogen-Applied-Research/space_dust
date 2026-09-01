@@ -32,11 +32,20 @@ defmodule SpaceDust.Data.EOP do
   and predictions up to ~1 year into the future (marked 'P').
   """
 
-  # finals.all contains historical + predicted EOP data (predictions ~1 year ahead)
-  @eopDataUrl "https://datacenter.iers.org/data/latestVersion/finals.all.iau2000.txt"
+  # finals.all contains historical + predicted EOP data (predictions ~1 year ahead).
+  #
+  # This must be the *iau1980* edition. The two editions share a column layout
+  # but not a meaning: columns 96-114 hold dPsi/dEps against IAU 1980 here, and
+  # dX/dY against IAU 2000A in the iau2000 edition. This library implements the
+  # IAU 1980 nutation series, so it needs the first. Reading dX/dY as dPsi/dEps
+  # silently drops the real correction - about -113 mas of dPsi in 2026, worth
+  # 23 m at geostationary radius - and substitutes a sub-milliarcsecond number.
+  @eopDataUrl "https://datacenter.iers.org/data/latestVersion/finals.all.iau1980.txt"
   rootPath = Path.expand("../..", __DIR__)
   @dataPath rootPath <> "/data"
-  @eopDataPath @dataPath <> "/eop_data.txt"
+  # Named for the edition on purpose: a cache written by an older build pulling
+  # the iau2000 file would otherwise be reused silently and stay wrong.
+  @eopDataPath @dataPath <> "/finals_iau1980.txt"
 
   case File.exists?(@dataPath) do
     true -> IO.puts("Data directory exists")
@@ -82,7 +91,10 @@ defmodule SpaceDust.Data.EOP do
 
   @spec readSavedEopData() :: {:error, atom()} | {:ok, [binary()]}
   def readSavedEopData() do
-    case File.read("eop_data.txt") do
+    # Must be @eopDataPath, the same absolute path saveEopData/1 writes. Reading
+    # a bare relative name resolves against the caller's working directory, so a
+    # saved file would never be found and every call would re-fetch.
+    case File.read(@eopDataPath) do
       {:ok, data} ->
         {:ok, String.split(data, "\n")}
 

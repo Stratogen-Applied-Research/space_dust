@@ -250,17 +250,20 @@ defmodule ObservationsTest do
       # Target 1000 km directly above (along the radial direction)
       r = :math.sqrt(ox * ox + oy * oy + oz * oz)
       scale = (r + 1000) / r
-      target_pos = {ox * scale, oy * scale, oz * scale}
 
-      # Convert to ECI - need to rotate by GAST
-      nutation = SpaceDust.Bodies.Earth.nutationAngles(@epoch)
-      gast = nutation.gast
-      {tx, ty, tz} = target_pos
-      eci_x = tx * :math.cos(gast) - ty * :math.sin(gast)
-      eci_y = tx * :math.sin(gast) + ty * :math.cos(gast)
-      eci_z = tz
+      # Go to ECI through the library's own transform rather than reimplementing
+      # one step of it. A hand-rolled Rz(GAST) is not the inverse of ECI->ECEF -
+      # that chain is W * R * N * P - so rotating by GAST alone leaves the
+      # "overhead" target 2.3 degrees off zenith, which is precession and
+      # nutation, not a bug in the elevation.
+      target =
+        SpaceDust.State.ECEFState.new(
+          @epoch,
+          {ox * scale, oy * scale, oz * scale},
+          {0.0, 0.0, 0.0}
+        )
+        |> SpaceDust.State.Transforms.ecef_to_eci()
 
-      target = ECIState.new(@epoch, {eci_x, eci_y, eci_z}, {0.0, 0.0, 0.0})
       az_el = Observations.compute_az_el(@equator_observer, target)
 
       # Elevation should be close to 90 degrees

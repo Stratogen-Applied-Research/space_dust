@@ -8,8 +8,14 @@ defmodule SpaceDust.Utils.Constants do
   def arcsecToRadians, do: :math.pi() / 648_000.0
   def radiansToArcsec, do: 648_000.0 / :math.pi()
 
-  # angle-time relations
-  def ttArcsecToRadians, do: arcsecToRadians() / 1000.0
+  # nutation series units
+  @doc """
+  Convert a raw IAU 1980 nutation coefficient to radians.
+
+  The IAU 1980 table is published in units of 0.0001 arcsecond - the leading
+  term, -171996, is the well-known dPsi = -17.1996". Divide by 10000, not 1000.
+  """
+  def ttArcsecToRadians, do: arcsecToRadians() / 10_000.0
 
   # time constants
   @doc "seconds per day - 86400.0"

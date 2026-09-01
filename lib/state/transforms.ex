@@ -96,62 +96,84 @@ defmodule SpaceDust.State.Transforms do
   # =============================================================================
 
   @doc """
-  Build the precession matrix from precession angles.
-  Transforms from Mean of Date (MOD) to J2000.
+  Build the IAU 1976 precession matrix.
+
+  Transforms **from J2000 to Mean of Date (MOD)**. Transpose it for the other
+  direction. `rotation_x/y/z` here are passive (frame) rotations, so this is
+  Vallado's `ROT3(-z) ROT2(theta) ROT3(-zeta)`.
   """
   defn precession_matrix(zeta, theta, z) do
-    # P = Rz(-z) * Ry(theta) * Rz(-zeta)
-    rz_neg_zeta = rotation_z(Nx.negate(zeta))
-    ry_theta = rotation_y(theta)
-    rz_neg_z = rotation_z(Nx.negate(z))
-
-    multiply_matrices(rz_neg_z, multiply_matrices(ry_theta, rz_neg_zeta))
+    multiply_matrices(
+      rotation_z(Nx.negate(z)),
+      multiply_matrices(rotation_y(theta), rotation_z(Nx.negate(zeta)))
+    )
   end
 
   @doc """
-  Build the nutation matrix from nutation angles.
-  Transforms from True of Date (TOD) to Mean of Date (MOD).
+  Build the IAU 1980 nutation matrix.
+
+  Transforms **from Mean of Date (MOD) to True of Date (TOD)**, as
+  `ROT1(-eps_true) ROT3(-delta_psi) ROT1(eps_mean)`. Transpose it for TOD to MOD.
   """
   defn nutation_matrix(mean_eps, delta_psi, delta_eps) do
     eps = mean_eps + delta_eps
 
-    # N = Rx(mean_eps) * Rz(delta_psi) * Rx(-eps)
-    rx_mean_eps = rotation_x(mean_eps)
-    rz_delta_psi = rotation_z(delta_psi)
-    rx_neg_eps = rotation_x(Nx.negate(eps))
-
-    multiply_matrices(rx_mean_eps, multiply_matrices(rz_delta_psi, rx_neg_eps))
+    multiply_matrices(
+      rotation_x(Nx.negate(eps)),
+      multiply_matrices(rotation_z(Nx.negate(delta_psi)), rotation_x(mean_eps))
+    )
   end
 
   @doc """
-  Build the equation of equinoxes rotation matrix.
-  Transforms from TEME to True of Date (TOD).
+  Build the nutation matrix in SGP4's TEME convention.
+
+  Transforms **from Mean of Date (MOD) to TEME**. TEME is not true-of-date: it
+  uses the *mean* obliquity on both sides of the nutation rotation and carries
+  no separate equation-of-equinoxes step. That is SGP4's own convention and it
+  has to be matched exactly, or a TLE-derived state lands kilometres off.
+  """
+  defn teme_nutation_matrix(mean_eps, delta_psi) do
+    multiply_matrices(
+      rotation_x(Nx.negate(mean_eps)),
+      multiply_matrices(rotation_z(Nx.negate(delta_psi)), rotation_x(mean_eps))
+    )
+  end
+
+  @doc """
+  Build the polar motion matrix from the IERS pole offsets, in radians.
+
+  Transforms **from the pseudo-earth-fixed frame (PEF) to ECEF**, as
+  `ROT2(xp) ROT1(yp)`.
+  """
+  defn polar_motion_matrix(xp, yp) do
+    multiply_matrices(rotation_y(xp), rotation_x(yp))
+  end
+
+  @doc """
+  Build the equation of equinoxes rotation, from TEME to True of Date.
+
+  Retained for callers working in TOD. It is deliberately **not** part of the
+  TEME transform below, which uses `teme_nutation_matrix/2` instead.
   """
   defn equinox_matrix(delta_psi, eps) do
-    # The equation of equinoxes term: delta_psi * cos(eps)
     eq_eq = delta_psi * Nx.cos(eps)
     rotation_z(Nx.negate(eq_eq))
   end
 
   @doc """
   Perform the full TEME to ECI J2000 transformation on position/velocity tensors.
+
+  `r_teme = N_teme * P * r_j2000`, so the inverse applied here is
+  `P^T * N_teme^T`.
   """
-  defn teme_to_eci_tensors(pos, vel, zeta, theta, z, mean_eps, delta_psi, delta_eps) do
-    eps = mean_eps + delta_eps
+  defn teme_to_eci_tensors(pos, vel, zeta, theta, z, mean_eps, delta_psi) do
+    combined =
+      multiply_matrices(
+        Nx.transpose(precession_matrix(zeta, theta, z)),
+        Nx.transpose(teme_nutation_matrix(mean_eps, delta_psi))
+      )
 
-    # Build transformation matrices
-    eq_mat = equinox_matrix(delta_psi, eps)
-    nut_mat = nutation_matrix(mean_eps, delta_psi, delta_eps)
-    prec_mat = precession_matrix(zeta, theta, z)
-
-    # Combined transformation: P * N * E
-    combined = multiply_matrices(prec_mat, multiply_matrices(nut_mat, eq_mat))
-
-    # Apply to position and velocity
-    pos_eci = apply_rotation(combined, pos)
-    vel_eci = apply_rotation(combined, vel)
-
-    {pos_eci, vel_eci}
+    {apply_rotation(combined, pos), apply_rotation(combined, vel)}
   end
 
   @doc """
@@ -165,23 +187,18 @@ defmodule SpaceDust.State.Transforms do
   """
   @spec teme_to_eci(TEMEState.t()) :: ECIState.t()
   def teme_to_eci(%TEMEState{epoch: epoch} = teme_state) do
-    # Get precession and nutation angles from Earth module
     precession = Earth.precessionAngles(epoch)
     nutation = Earth.nutationAngles(epoch)
 
-    # Convert to tensors
     {pos, vel} = TEMEState.to_tensors(teme_state)
 
-    # Build angle tensors
     zeta = Nx.tensor(precession.zeta, type: :f64)
     theta = Nx.tensor(precession.theta, type: :f64)
     z = Nx.tensor(precession.z, type: :f64)
     mean_eps = Nx.tensor(nutation.mEps, type: :f64)
     delta_psi = Nx.tensor(nutation.dPsi, type: :f64)
-    delta_eps = Nx.tensor(nutation.dEps, type: :f64)
 
-    # Perform transformation
-    {pos_eci, vel_eci} = teme_to_eci_tensors(pos, vel, zeta, theta, z, mean_eps, delta_psi, delta_eps)
+    {pos_eci, vel_eci} = teme_to_eci_tensors(pos, vel, zeta, theta, z, mean_eps, delta_psi)
 
     ECIState.from_tensors(epoch, pos_eci, vel_eci)
   end
@@ -192,23 +209,17 @@ defmodule SpaceDust.State.Transforms do
 
   @doc """
   Perform the full ECI J2000 to TEME transformation on position/velocity tensors.
+
+  `r_teme = N_teme * P * r_j2000`.
   """
-  defn eci_to_teme_tensors(pos, vel, zeta, theta, z, mean_eps, delta_psi, delta_eps) do
-    eps = mean_eps + delta_eps
+  defn eci_to_teme_tensors(pos, vel, zeta, theta, z, mean_eps, delta_psi) do
+    combined =
+      multiply_matrices(
+        teme_nutation_matrix(mean_eps, delta_psi),
+        precession_matrix(zeta, theta, z)
+      )
 
-    # Build transformation matrices (transposed for inverse)
-    eq_mat = Nx.transpose(equinox_matrix(delta_psi, eps))
-    nut_mat = Nx.transpose(nutation_matrix(mean_eps, delta_psi, delta_eps))
-    prec_mat = Nx.transpose(precession_matrix(zeta, theta, z))
-
-    # Combined transformation: E^T * N^T * P^T
-    combined = multiply_matrices(eq_mat, multiply_matrices(nut_mat, prec_mat))
-
-    # Apply to position and velocity
-    pos_teme = apply_rotation(combined, pos)
-    vel_teme = apply_rotation(combined, vel)
-
-    {pos_teme, vel_teme}
+    {apply_rotation(combined, pos), apply_rotation(combined, vel)}
   end
 
   @doc """
@@ -222,23 +233,18 @@ defmodule SpaceDust.State.Transforms do
   """
   @spec eci_to_teme(ECIState.t()) :: TEMEState.t()
   def eci_to_teme(%ECIState{epoch: epoch} = eci_state) do
-    # Get precession and nutation angles from Earth module
     precession = Earth.precessionAngles(epoch)
     nutation = Earth.nutationAngles(epoch)
 
-    # Convert to tensors
     {pos, vel} = ECIState.to_tensors(eci_state)
 
-    # Build angle tensors
     zeta = Nx.tensor(precession.zeta, type: :f64)
     theta = Nx.tensor(precession.theta, type: :f64)
     z = Nx.tensor(precession.z, type: :f64)
     mean_eps = Nx.tensor(nutation.mEps, type: :f64)
     delta_psi = Nx.tensor(nutation.dPsi, type: :f64)
-    delta_eps = Nx.tensor(nutation.dEps, type: :f64)
 
-    # Perform transformation
-    {pos_teme, vel_teme} = eci_to_teme_tensors(pos, vel, zeta, theta, z, mean_eps, delta_psi, delta_eps)
+    {pos_teme, vel_teme} = eci_to_teme_tensors(pos, vel, zeta, theta, z, mean_eps, delta_psi)
 
     TEMEState.from_tensors(epoch, pos_teme, vel_teme)
   end
@@ -248,30 +254,47 @@ defmodule SpaceDust.State.Transforms do
   # =============================================================================
 
   @doc """
+  Build the full `W * R * N * P` rotation taking an ECI J2000 vector to ECEF.
+
+  Four rotations, in this order applied to a J2000 vector:
+
+    * `P` - precession, J2000 to mean of date
+    * `N` - nutation, mean of date to true of date
+    * `R` - Earth rotation through the Greenwich apparent sidereal time
+    * `W` - polar motion, pseudo-earth-fixed to ECEF
+
+  Skipping `N` and `P` and applying `R` alone to a J2000 vector leaves the
+  result short by the accumulated precession - roughly 0.4 degrees, or 645 km
+  at geostationary radius.
+  """
+  defn eci_to_ecef_matrix(zeta, theta, z, mean_eps, delta_psi, delta_eps, gast, xp, yp) do
+    multiply_matrices(
+      multiply_matrices(polar_motion_matrix(xp, yp), rotation_z(gast)),
+      multiply_matrices(
+        nutation_matrix(mean_eps, delta_psi, delta_eps),
+        precession_matrix(zeta, theta, z)
+      )
+    )
+  end
+
+  @doc """
   Perform ECI to ECEF transformation on position/velocity tensors.
   Accounts for Earth rotation and velocity contribution from rotation.
   """
-  defn eci_to_ecef_tensors(pos, vel, gast, omega) do
-    # Rotation matrix from ECI to ECEF
-    rot = rotation_z(gast)
-
-    # Position transformation is straightforward
+  defn eci_to_ecef_tensors(pos, vel, rot, omega) do
     pos_ecef = apply_rotation(rot, pos)
 
-    # Velocity needs correction for Earth's rotation
-    # v_ecef = R * v_eci - omega x r_ecef
-    vel_rotated = apply_rotation(rot, vel)
+    # v_ecef = M * v_eci - omega x r_ecef, with omega along the ECEF z-axis.
+    # The time derivatives of W, N and P are neglected: they are eleven orders
+    # of magnitude below Earth's rotation rate.
+    omega_cross_r =
+      Nx.stack([
+        Nx.negate(omega) * pos_ecef[1],
+        omega * pos_ecef[0],
+        Nx.tensor(0.0, type: :f64)
+      ])
 
-    # omega cross r_ecef (omega is along z-axis)
-    omega_cross_r = Nx.stack([
-      Nx.negate(omega) * pos_ecef[1],
-      omega * pos_ecef[0],
-      Nx.tensor(0.0, type: :f64)
-    ])
-
-    vel_ecef = vel_rotated - omega_cross_r
-
-    {pos_ecef, vel_ecef}
+    {pos_ecef, apply_rotation(rot, vel) - omega_cross_r}
   end
 
   @doc """
@@ -285,18 +308,38 @@ defmodule SpaceDust.State.Transforms do
   """
   @spec eci_to_ecef(ECIState.t()) :: ECEFState.t()
   def eci_to_ecef(%ECIState{epoch: epoch} = eci_state) do
-    # Get GAST (Greenwich Apparent Sidereal Time)
-    nutation = Earth.nutationAngles(epoch)
-    gast = Nx.tensor(nutation.gast, type: :f64)
+    rot = eci_to_ecef_matrix_at(epoch)
     omega = Nx.tensor(@earth_omega, type: :f64)
 
-    # Convert to tensors
     {pos, vel} = ECIState.to_tensors(eci_state)
-
-    # Perform transformation
-    {pos_ecef, vel_ecef} = eci_to_ecef_tensors(pos, vel, gast, omega)
+    {pos_ecef, vel_ecef} = eci_to_ecef_tensors(pos, vel, rot, omega)
 
     ECEFState.from_tensors(epoch, pos_ecef, vel_ecef)
+  end
+
+  @doc """
+  The `W * R * N * P` ECI J2000 to ECEF rotation matrix at an epoch, as a tensor.
+
+  Exposed for callers that need to rotate a bare direction, where the
+  `omega x r` velocity coupling in `eci_to_ecef/1` would be meaningless.
+  """
+  @spec eci_to_ecef_matrix_at(DateTime.t()) :: Nx.Tensor.t()
+  def eci_to_ecef_matrix_at(epoch) do
+    precession = Earth.precessionAngles(epoch)
+    nutation = Earth.nutationAngles(epoch)
+    {xp, yp} = Earth.polarMotion(epoch)
+
+    eci_to_ecef_matrix(
+      Nx.tensor(precession.zeta, type: :f64),
+      Nx.tensor(precession.theta, type: :f64),
+      Nx.tensor(precession.z, type: :f64),
+      Nx.tensor(nutation.mEps, type: :f64),
+      Nx.tensor(nutation.dPsi, type: :f64),
+      Nx.tensor(nutation.dEps, type: :f64),
+      Nx.tensor(nutation.gast, type: :f64),
+      Nx.tensor(xp, type: :f64),
+      Nx.tensor(yp, type: :f64)
+    )
   end
 
   # =============================================================================
@@ -306,25 +349,18 @@ defmodule SpaceDust.State.Transforms do
   @doc """
   Perform ECEF to ECI transformation on position/velocity tensors.
   """
-  defn ecef_to_eci_tensors(pos, vel, gast, omega) do
-    # Inverse rotation matrix (transpose of Rz)
-    rot_inv = Nx.transpose(rotation_z(gast))
+  defn ecef_to_eci_tensors(pos, vel, rot, omega) do
+    rot_inv = Nx.transpose(rot)
 
-    # First correct velocity for Earth's rotation
-    # v_eci = R^T * (v_ecef + omega x r_ecef)
-    omega_cross_r = Nx.stack([
-      Nx.negate(omega) * pos[1],
-      omega * pos[0],
-      Nx.tensor(0.0, type: :f64)
-    ])
+    # v_eci = M^T * (v_ecef + omega x r_ecef)
+    omega_cross_r =
+      Nx.stack([
+        Nx.negate(omega) * pos[1],
+        omega * pos[0],
+        Nx.tensor(0.0, type: :f64)
+      ])
 
-    vel_corrected = vel + omega_cross_r
-
-    # Apply rotation
-    pos_eci = apply_rotation(rot_inv, pos)
-    vel_eci = apply_rotation(rot_inv, vel_corrected)
-
-    {pos_eci, vel_eci}
+    {apply_rotation(rot_inv, pos), apply_rotation(rot_inv, vel + omega_cross_r)}
   end
 
   @doc """
@@ -338,16 +374,11 @@ defmodule SpaceDust.State.Transforms do
   """
   @spec ecef_to_eci(ECEFState.t()) :: ECIState.t()
   def ecef_to_eci(%ECEFState{epoch: epoch} = ecef_state) do
-    # Get GAST (Greenwich Apparent Sidereal Time)
-    nutation = Earth.nutationAngles(epoch)
-    gast = Nx.tensor(nutation.gast, type: :f64)
+    rot = eci_to_ecef_matrix_at(epoch)
     omega = Nx.tensor(@earth_omega, type: :f64)
 
-    # Convert to tensors
     {pos, vel} = ECEFState.to_tensors(ecef_state)
-
-    # Perform transformation
-    {pos_eci, vel_eci} = ecef_to_eci_tensors(pos, vel, gast, omega)
+    {pos_eci, vel_eci} = ecef_to_eci_tensors(pos, vel, rot, omega)
 
     ECIState.from_tensors(epoch, pos_eci, vel_eci)
   end
@@ -392,61 +423,90 @@ defmodule SpaceDust.State.Transforms do
   # Cartesian to Keplerian Elements Conversion
   # =============================================================================
 
+  # Cross product of two 3-vectors.
+  defnp cross3(a, b) do
+    Nx.stack([
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0]
+    ])
+  end
+
+  # Normalize, guarding against a zero-length input so the result is finite even
+  # when the caller is about to discard it via Nx.select.
+  defnp safe_normalize(v) do
+    v / Nx.max(Nx.sqrt(Nx.sum(v * v)), 1.0e-300)
+  end
+
+  # Signed angle from `from` to `to`, measured right-handed about `axis`, in
+  # [0, 2*pi). All three must be unit vectors.
+  #
+  # This is atan2-based on purpose. The acos form needs its argument clamped or
+  # it raises on a rounding excursion past +/-1, which happens routinely for
+  # near-degenerate geometry.
+  defnp angle_about(from, to, axis) do
+    angle = Nx.atan2(Nx.sum(axis * cross3(from, to)), Nx.sum(from * to))
+    Nx.select(angle < 0.0, angle + 2.0 * Nx.Constants.pi(), angle)
+  end
+
   @doc """
   Convert Cartesian state to Keplerian elements using Nx.
+
+  Degenerate geometry is handled by falling back to a reference direction that
+  is still defined, rather than by reporting zero and losing the information:
+
+    * equatorial - the ascending node is undefined, so the argument of perigee
+      is measured from the vernal equinox and the RAAN reported as zero
+    * circular - perigee is undefined, so the true anomaly is measured from
+      whatever the argument of perigee was measured from
+
+  Both keep the round trip through `keplerian_to_eci/1` exact. Reporting zero
+  for all three angles instead, as an equatorial orbit would otherwise get,
+  puts the reconstructed position a full orbit radius away.
   """
   defn cartesian_to_keplerian_tensors(pos, vel, mu) do
-    # Position and velocity magnitudes
     r = Nx.sqrt(Nx.sum(pos * pos))
-    v = Nx.sqrt(Nx.sum(vel * vel))
+    v_sq = Nx.sum(vel * vel)
+    rdotv = Nx.sum(pos * vel)
 
     # Specific angular momentum h = r x v
-    h = Nx.stack([
-      pos[1] * vel[2] - pos[2] * vel[1],
-      pos[2] * vel[0] - pos[0] * vel[2],
-      pos[0] * vel[1] - pos[1] * vel[0]
-    ])
+    h = cross3(pos, vel)
     h_mag = Nx.sqrt(Nx.sum(h * h))
 
-    # Node vector n = k x h (k is z-unit vector)
+    # Node vector n = k x h, pointing at the ascending node
     n = Nx.stack([Nx.negate(h[1]), h[0], Nx.tensor(0.0, type: :f64)])
     n_mag = Nx.sqrt(Nx.sum(n * n))
 
     # Eccentricity vector e = ((v^2 - mu/r)*r - (r.v)*v) / mu
-    rdotv = Nx.sum(pos * vel)
-    e_vec = ((v * v - mu / r) * pos - rdotv * vel) / mu
+    e_vec = ((v_sq - mu / r) * pos - rdotv * vel) / mu
     e = Nx.sqrt(Nx.sum(e_vec * e_vec))
 
-    # Semi-major axis
-    energy = v * v / 2.0 - mu / r
+    energy = v_sq / 2.0 - mu / r
     a = Nx.negate(mu) / (2.0 * energy)
 
-    # Inclination
-    i = Nx.acos(h[2] / h_mag)
+    i = Nx.acos(Nx.clip(h[2] / h_mag, -1.0, 1.0))
 
-    # RAAN (Right Ascension of Ascending Node)
-    # Handle case when n_mag is near zero (equatorial orbit)
-    raan = Nx.select(
-      n_mag > 1.0e-10,
-      Nx.select(n[1] >= 0, Nx.acos(n[0] / n_mag), 2.0 * Nx.Constants.pi() - Nx.acos(n[0] / n_mag)),
-      Nx.tensor(0.0, type: :f64)
-    )
+    # The node threshold is relative to |h| because n is a component of it.
+    node_defined = n_mag > 1.0e-12 * h_mag
+    perigee_defined = e > 1.0e-12
 
-    # Argument of perigee
-    n_dot_e = Nx.sum(n * e_vec)
-    w = Nx.select(
-      n_mag > 1.0e-10 and e > 1.0e-10,
-      Nx.select(e_vec[2] >= 0, Nx.acos(n_dot_e / (n_mag * e)), 2.0 * Nx.Constants.pi() - Nx.acos(n_dot_e / (n_mag * e))),
-      Nx.tensor(0.0, type: :f64)
-    )
+    x_hat = Nx.tensor([1.0, 0.0, 0.0], type: :f64)
+    z_hat = Nx.tensor([0.0, 0.0, 1.0], type: :f64)
+    orbit_normal = safe_normalize(h)
+    n_hat = safe_normalize(n)
+    e_hat = safe_normalize(e_vec)
 
-    # True anomaly
-    e_dot_r = Nx.sum(e_vec * pos)
-    nu = Nx.select(
-      e > 1.0e-10,
-      Nx.select(rdotv >= 0, Nx.acos(e_dot_r / (e * r)), 2.0 * Nx.Constants.pi() - Nx.acos(e_dot_r / (e * r))),
-      Nx.tensor(0.0, type: :f64)
-    )
+    raan = Nx.select(node_defined, angle_about(x_hat, n_hat, z_hat), 0.0)
+
+    # Whatever the argument of perigee is measured from - the node when there
+    # is one, the vernal equinox when there is not. That choice is exactly what
+    # raan reported above, so the two stay consistent.
+    perigee_ref = Nx.select(node_defined, n_hat, x_hat)
+
+    w = Nx.select(perigee_defined, angle_about(perigee_ref, e_hat, orbit_normal), 0.0)
+
+    anomaly_ref = Nx.select(perigee_defined, e_hat, perigee_ref)
+    nu = angle_about(anomaly_ref, safe_normalize(pos), orbit_normal)
 
     Nx.stack([a, e, i, raan, w, nu])
   end

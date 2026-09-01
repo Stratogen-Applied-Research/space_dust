@@ -18,7 +18,7 @@ defmodule SpaceDust.Data.EOPCache do
   alias SpaceDust.Math.Functions
 
   # Data path - same as EOP module
-  @eop_data_path Path.expand("../../data/eop_data.txt", __DIR__)
+  @eop_data_path Path.expand("../../data/finals_iau1980.txt", __DIR__)
 
   @table_name :eop_cache
   @data_key :eop_data

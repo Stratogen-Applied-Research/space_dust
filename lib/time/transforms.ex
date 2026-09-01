@@ -24,7 +24,7 @@ defmodule SpaceDust.Time.Transforms do
 
   import Nx.Defn
   alias SpaceDust.Time.{UTC, TAI, TT, GPS, JulianDate, GMST}
-  alias SpaceDust.Data.LeapSecond
+  alias SpaceDust.Data.{LeapSecond, EOPCache}
 
   # Constants for Nx
   @tt_tai_offset 32.184
@@ -216,19 +216,42 @@ defmodule SpaceDust.Time.Transforms do
   # ============================================================================
 
   @doc """
+  Convert UTC to the UT1 Julian Date.
+
+  Earth's rotation angle is a function of UT1, so any sidereal time has to be
+  formed from UT1 rather than UTC. The offset comes from the interpolated IERS
+  table and is bounded by 0.9 s; an epoch with no EOP coverage falls back to
+  UTC, which costs up to about 13 arcseconds of rotation.
+  """
+  @spec utc_to_ut1_jd(UTC.t()) :: float()
+  def utc_to_ut1_jd(%UTC{} = utc) do
+    jd = UTC.to_jd(utc)
+
+    offset =
+      case EOPCache.get(jd - 2_400_000.5) do
+        {:ok, %{ut1UTC: ut1_utc}} when is_number(ut1_utc) -> ut1_utc
+        _ -> 0.0
+      end
+
+    jd + offset / @seconds_per_day
+  end
+
+  @doc """
   Calculate GMST from UTC time.
 
-  Uses the IAU 1982 expression for GMST.
+  Uses the IAU 1982 expression, evaluated on UT1.
   """
   @spec utc_to_gmst(UTC.t()) :: GMST.t()
   def utc_to_gmst(%UTC{} = utc) do
-    jd = UTC.to_jd(utc)
-    gmst_radians = calculate_gmst(jd)
+    gmst_radians = calculate_gmst(utc_to_ut1_jd(utc))
     GMST.new(gmst_radians) |> GMST.normalize()
   end
 
   @doc """
-  Calculate GMST from Julian Date.
+  Calculate GMST from a Julian Date.
+
+  The Julian Date must be in UT1. Use `utc_to_gmst/1` to have the UT1 offset
+  applied for you.
   """
   @spec jd_to_gmst(JulianDate.t()) :: GMST.t()
   def jd_to_gmst(%JulianDate{jd: jd}) do
@@ -236,20 +259,25 @@ defmodule SpaceDust.Time.Transforms do
     GMST.new(gmst_radians) |> GMST.normalize()
   end
 
-  # Private GMST calculation using IAU 1982 formula
+  # Private GMST calculation using the IAU 1982 formula.
+  #
+  # The polynomial is defined at 0h UT1 of the day in question, so the Julian
+  # Date has to be floored to midnight before forming T. The elapsed fraction
+  # of the day is then added separately, scaled by the sidereal rate. Feeding
+  # the polynomial the full Julian Date *and* adding the fractional-day term
+  # counts the elapsed day twice, which is worth up to 0.0172 rad - a whole
+  # degree of Earth rotation - just before midnight.
   defp calculate_gmst(jd) do
-    # Julian centuries from J2000.0
-    t = (jd - 2_451_545.0) / 36525.0
+    jd_midnight = Float.floor(jd - 0.5) + 0.5
+    t = (jd_midnight - 2_451_545.0) / 36525.0
 
     {c0, c1, c2, c3} = @gmst_poly
 
-    # GMST at 0h UT in seconds
+    # GMST at 0h UT1, in seconds
     gmst_0h = c0 + c1 * t + c2 * t * t + c3 * t * t * t
 
-    # Add the rotation for the fractional day
-    # Earth rotates 360.98564736629 degrees per day (sidereal)
-    frac_day = :math.fmod(jd + 0.5, 1.0)
-    rotation_seconds = frac_day * 86400.0 * 1.00273790935
+    # Add the rotation for the elapsed fraction of the day, in sidereal seconds
+    rotation_seconds = (jd - jd_midnight) * 86400.0 * 1.00273790935
 
     gmst_seconds = gmst_0h + rotation_seconds
 
@@ -257,24 +285,26 @@ defmodule SpaceDust.Time.Transforms do
     gmst_seconds / 86400.0 * 2.0 * :math.pi()
   end
 
-  # Nx-based GMST calculation
+  @doc """
+  GMST in radians from a batch of UT1 Julian Dates, normalized to [0, 2π).
+  """
   defn gmst_from_jd_tensor(jd) do
-    # Julian centuries from J2000.0
-    t = (jd - 2_451_545.0) / 36525.0
+    # Floor to 0h UT1 before forming T; see calculate_gmst/1 above.
+    jd_midnight = Nx.floor(jd - 0.5) + 0.5
+    t = (jd_midnight - 2_451_545.0) / 36525.0
 
-    # GMST polynomial (IAU 1982)
+    # GMST polynomial (IAU 1982), seconds
     gmst_0h = 24110.54841 + 8_640_184.812866 * t + 0.093104 * t * t - 6.2e-6 * t * t * t
 
-    # Add rotation for fractional day
-    frac_day = Nx.remainder(jd + 0.5, 1.0)
-    rotation_seconds = frac_day * 86400.0 * 1.00273790935
+    # Rotation for the elapsed fraction of the day
+    rotation_seconds = (jd - jd_midnight) * 86400.0 * 1.00273790935
 
     gmst_seconds = gmst_0h + rotation_seconds
 
-    # Convert to radians and normalize
+    # Convert to radians and normalize into [0, 2π)
     two_pi = 2.0 * Nx.Constants.pi()
-    gmst_rad = gmst_seconds / 86400.0 * two_pi
-    Nx.remainder(gmst_rad, two_pi)
+    gmst_rad = Nx.remainder(gmst_seconds / 86400.0 * two_pi, two_pi)
+    Nx.select(gmst_rad < 0.0, gmst_rad + two_pi, gmst_rad)
   end
 
   # ============================================================================
@@ -297,10 +327,14 @@ defmodule SpaceDust.Time.Transforms do
   end
 
   @doc """
-  Full conversion pipeline: UTC unix seconds -> GMST radians.
+  Full conversion pipeline: UT1 unix seconds -> GMST radians.
+
+  Takes UT1, not UTC: an EOP lookup cannot run inside `defn`, so add the
+  `UT1 - UTC` offset (see `utc_to_ut1_jd/1`) before calling this. Passing UTC
+  costs up to about 13 arcseconds of rotation.
   """
-  defn batch_utc_to_gmst(utc_unix_seconds) do
-    jd = unix_seconds_to_jd(utc_unix_seconds)
+  defn batch_ut1_to_gmst(ut1_unix_seconds) do
+    jd = unix_seconds_to_jd(ut1_unix_seconds)
     gmst_from_jd_tensor(jd)
   end
 end

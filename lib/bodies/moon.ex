@@ -182,17 +182,24 @@ defmodule SpaceDust.Bodies.Moon do
 
     beta_rad = delta_beta * Constants.degreesToRadians()
 
-    # Distance (in Earth radii)
-    delta_r =
-      -0.40720 * :math.cos(m_prime_rad) -
-        0.18603 * :math.cos(2.0 * d_rad - m_prime_rad) -
-        0.01462 * :math.cos(2.0 * d_rad) -
-        0.00122 * :math.cos(2.0 * m_prime_rad) +
-        0.00079 * :math.cos(m_rad)
+    # Distance, from the horizontal parallax series (Montenbruck & Gill,
+    # "Satellite Orbits", Appendix C), in arcseconds. The Earth's equatorial
+    # radius subtends this angle at the Moon, so r = R_earth / sin(parallax).
+    #
+    # Going through the parallax rather than a series in Earth radii is what
+    # gets the amplitude right: the leading term is 186.54" against a 3422.7"
+    # mean, which is 3.28 Earth radii of variation - the Moon really does swing
+    # between about 356 500 km and 406 700 km over an anomalistic month.
+    parallax_arcsec =
+      3422.7 +
+        186.5398 * :math.cos(m_prime_rad) +
+        34.3117 * :math.cos(2.0 * d_rad - m_prime_rad) +
+        28.2333 * :math.cos(2.0 * d_rad) +
+        10.1657 * :math.cos(2.0 * m_prime_rad) +
+        3.0861 * :math.cos(2.0 * d_rad + m_prime_rad) -
+        1.9178 * :math.cos(2.0 * d_rad - m_rad)
 
-    # Mean distance in Earth radii is ~60.2666
-    r_earth_radii = 60.2666 + delta_r
-    r_m = r_earth_radii * @earth_radius
+    r_m = @earth_radius / :math.sin(parallax_arcsec * Constants.arcsecToRadians())
 
     # Obliquity of the ecliptic
     epsilon = Math.polyEval(obliquityPoly(), t)

@@ -31,23 +31,26 @@ defmodule SpaceDust.Bodies.Earth do
   alias SpaceDust.Data.IAU1980, as: IAU1980
   alias SpaceDust.Data.IAU1980Data, as: IAU1980Data
   alias SpaceDust.Data.EOPCache
-  alias SpaceDust.Time.{UTC, Transforms, Epoch}
+  alias SpaceDust.Time.{UTC, Transforms}
 
-  # doc "'zeta' coefficients for earth precession"
+  # doc "'zeta' coefficients for earth precession - IAU 1976"
+  # zeta = 2306.2181"T + 0.30188"T^2 + 0.017998"T^3
   defp zetaPoly do
     [
-      0.017988 * Constants.arcsecToRadians(),
+      0.017998 * Constants.arcsecToRadians(),
       0.30188 * Constants.arcsecToRadians(),
       2306.2181 * Constants.arcsecToRadians(),
       0.0
     ]
   end
 
-  # doc "'theta' coefficients for earth precession"
+  # doc "'theta' coefficients for earth precession - IAU 1976"
+  # theta = 2004.3109"T - 0.42665"T^2 - 0.041833"T^3
+  # Both higher-order terms are negative; theta shrinks relative to the linear term.
   defp thetaPoly do
     [
       -0.041833 * Constants.arcsecToRadians(),
-      0.42665 * Constants.arcsecToRadians(),
+      -0.42665 * Constants.arcsecToRadians(),
       2004.3109 * Constants.arcsecToRadians(),
       0.0
     ]
@@ -113,13 +116,17 @@ defmodule SpaceDust.Bodies.Earth do
     ]
   end
 
-  # doc "earth nutation mean epsilon poly coefficients"
+  # doc "earth mean obliquity of the ecliptic, IAU 1980"
+  # eps_mean = 84381.448" - 46.8150"T - 0.00059"T^2 + 0.001813"T^3
+  #
+  # Kept in arcseconds because that is how the IAU defines it: 84381.448" is
+  # exact, and the rounded degree form (23.439291) is 0.4 mas short of it.
   defp meanEpsilonPoly do
     [
-      5.04e-7 * Constants.degreesToRadians(),
-      -1.64e-7 * Constants.degreesToRadians(),
-      -0.0130042 * Constants.degreesToRadians(),
-      23.439291 * Constants.degreesToRadians()
+      0.001813 * Constants.arcsecToRadians(),
+      -0.00059 * Constants.arcsecToRadians(),
+      -46.8150 * Constants.arcsecToRadians(),
+      84_381.448 * Constants.arcsecToRadians()
     ]
   end
 
@@ -165,11 +172,39 @@ defmodule SpaceDust.Bodies.Earth do
   @doc "earth J6 coefficient (unitless)"
   def j6, do: 5.40681239107085e-7
 
-  @doc "calculate the precession angles for the earth"
+  @doc """
+  Polar motion angles at an epoch, as `{xp, yp}` in radians.
+
+  These orient the true celestial pole against the ITRF pole and are the `W`
+  in the `W * R * N * P` chain from J2000 to Earth-fixed. They are tabulated by
+  the IERS in arcseconds and are worth up to about 15 m at the Earth's surface.
+
+  Returns `{0.0, 0.0}` when no EOP record covers the epoch, which degrades the
+  Earth-fixed frame to the true-of-date pole rather than failing.
+  """
+  @spec polarMotion(DateTime.t()) :: {float(), float()}
+  def polarMotion(epochUtc) do
+    utc = UTC.from_datetime(epochUtc)
+
+    case EOPCache.get(UTC.to_mjd(utc)) do
+      {:ok, %{polarMotionX: xp, polarMotionY: yp}} when is_number(xp) and is_number(yp) ->
+        {xp * Constants.arcsecToRadians(), yp * Constants.arcsecToRadians()}
+
+      _ ->
+        {0.0, 0.0}
+    end
+  end
+
+  @doc """
+  Calculate the IAU 1976 precession angles for the earth, in radians.
+
+  The angles are defined on Julian centuries of *Terrestrial Time* since
+  J2000.0, not UTC.
+  """
   def precessionAngles(epochUtc) do
     utc = UTC.from_datetime(epochUtc)
-    julianDate = UTC.to_jd(utc)
-    t = (julianDate - Epoch.j2000_jd()) / 36525.0
+    tt = Transforms.utc_to_tt(utc)
+    t = SpaceDust.Time.TT.julian_centuries_j2000(tt)
     zeta = Math.polyEval(zetaPoly(), t)
     theta = Math.polyEval(thetaPoly(), t)
     z = Math.polyEval(zPoly(), t)
@@ -209,8 +244,14 @@ defmodule SpaceDust.Bodies.Earth do
     end
   end
 
-  @doc "calculate the nutation angles for the earth"
-  def nutationAngles(epochUtc, coeffs \\ 4, useEop \\ true) do
+  @doc """
+  Calculate the IAU 1980 nutation angles for the earth, in radians.
+
+  `coeffs` is how many terms of the 106-term series to sum, longest-period
+  first; the default is all of them. Truncating to the leading 4 costs about
+  0.14 arcseconds, which is larger than everything else in this chain.
+  """
+  def nutationAngles(epochUtc, coeffs \\ IAU1980.termCount(), useEop \\ true) do
     utc = UTC.from_datetime(epochUtc)
     tt = Transforms.utc_to_tt(utc)
     julianCenturies = SpaceDust.Time.TT.julian_centuries_j2000(tt)
@@ -221,12 +262,14 @@ defmodule SpaceDust.Bodies.Earth do
     sunElongation = Math.polyEval(sunElongationPoly(), julianCenturies)
     lunarRaan = Math.polyEval(lunarRaanPoly(), julianCenturies)
 
-    # sum results of nutation theory
+    # sum results of nutation theory, in the published unit of 0.0001 arcsecond
     {deltaPsi, deltaEpsilon} =
-      Enum.reduce(0..(coeffs - 1), {0.0, 0.0}, fn r, {accPsi, accEps} ->
+      IAU1980.all()
+      |> Enum.take(coeffs)
+      |> Enum.reduce({0.0, 0.0}, fn term, {accPsi, accEps} ->
         {dPsi, dEps} =
-          IAU1980.getCoefficients(r)
-          |> iauToNutationAngles(
+          iauToNutationAngles(
+            term,
             lunarAnomaly,
             solarAnomaly,
             lunarLatitude,
@@ -241,16 +284,17 @@ defmodule SpaceDust.Bodies.Earth do
     deltaPsiRad = deltaPsi * Constants.ttArcsecToRadians()
     deltaEpsilonRad = deltaEpsilon * Constants.ttArcsecToRadians()
 
+    # The IERS celestial-pole offsets are tabulated in arcseconds; the series
+    # above is already in radians, so they have to be scaled before they are
+    # added. Missing EOP coverage costs well under a milliarcsecond here, so an
+    # uncovered epoch falls back to the unadjusted series rather than failing.
     {finalDeltaPsi, finalDeltaEpsilon} =
-      case useEop do
-        true ->
-          {:ok, eopData} =
-            UTC.to_mjd(utc)
-            |> EOPCache.get()
+      case useEop && EOPCache.get(UTC.to_mjd(utc)) do
+        {:ok, %{dPsi: dPsi, dEps: dEps}} when is_number(dPsi) and is_number(dEps) ->
+          {deltaPsiRad + dPsi * Constants.arcsecToRadians(),
+           deltaEpsilonRad + dEps * Constants.arcsecToRadians()}
 
-          {deltaPsiRad + eopData.dPsi, deltaEpsilonRad + eopData.dEps}
-
-        false ->
+        _ ->
           {deltaPsiRad, deltaEpsilonRad}
       end
 
@@ -259,8 +303,10 @@ defmodule SpaceDust.Bodies.Earth do
 
     gmst = Transforms.utc_to_gmst(utc)
 
+    # The equation of the equinoxes takes the *mean* obliquity, per IAU 1976/FK5.
+    # The two complementary terms in the lunar node are the 1994 addition.
     eqEq =
-      finalDeltaPsi * :math.cos(epsilon) +
+      finalDeltaPsi * :math.cos(meanEpsilon) +
         0.00264 * Constants.arcsecToRadians() * :math.sin(lunarRaan) +
         0.000063 * Constants.arcsecToRadians() * :math.sin(2.0 * lunarRaan)
 
