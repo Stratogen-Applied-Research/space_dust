@@ -83,17 +83,21 @@ defmodule SpaceDust do
       az_el = Observations.compute_az_el(observer, eci)
   """
 
+  # Read from the project config at compile time so this cannot drift from
+  # mix.exs the way a hand-written literal did.
+  @version Mix.Project.config()[:version]
+
   @doc """
   Returns library version information.
 
   ## Examples
 
-      iex> SpaceDust.version()
-      "0.2.0"
+      iex> SpaceDust.version() == to_string(Application.spec(:space_dust, :vsn))
+      true
 
   """
   @spec version() :: String.t()
   def version do
-    "0.2.0"
+    @version
   end
 end

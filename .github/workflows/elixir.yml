@@ -31,4 +31,6 @@ jobs:
     - name: Install dependencies
       run: mix deps.get
     - name: Run tests
-      run: mix test
+      # Celestrak answers GitHub's runner IPs with HTTP 503, so the test that
+      # fetches a live TLE is tagged :external and skipped here.
+      run: mix test --exclude external

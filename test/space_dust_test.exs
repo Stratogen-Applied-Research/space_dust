@@ -3,6 +3,6 @@ defmodule SpaceDustTest do
   doctest SpaceDust
 
   test "returns version" do
-    assert SpaceDust.version() == "0.2.0"
+    assert SpaceDust.version() == to_string(Application.spec(:space_dust, :vsn))
   end
 end

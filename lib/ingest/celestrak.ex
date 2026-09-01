@@ -51,22 +51,41 @@ defmodule SpaceDust.Ingest.Celestrak do
     response = Req.get!(@baseUrl <> @targetIdSpecifier <> targetId <> @tleSpecifier)
 
     case response.status do
-      200 ->
-        # split the response body into lines
-        lines =
-          String.split(response.body, "\n")
-          |> Enum.map(&String.trim/1)
+      200 -> parseTleResponseBody(response.body)
+      _ -> {:error, "Failed to retrieve TLE data from Celestrak"}
+    end
+  end
 
-        # line 1 has "1" at the beginning
-        line1 = Enum.find(lines, fn line -> String.starts_with?(line, "1") end)
-        # line 2 has "2" at the beginning
-        line2 = Enum.find(lines, fn line -> String.starts_with?(line, "2") end)
-        # parse the TLE
-        # this function returns {:ok, TLE} or {:error, reason}
-        TLE.parseTLE(line1, line2)
+  @doc """
+  Parse the body of a Celestrak `FORMAT=TLE` response into a TLE.
 
-      _ ->
-        {:error, "Failed to retrieve TLE data from Celestrak"}
+  Split out from `pullLatestTLE/1` so the parsing can be exercised without
+  reaching Celestrak; the live endpoint rejects datacenter traffic, so CI has no
+  way to fetch a real response.
+
+  ## Returns
+
+    - `{:ok, %TwoLineElementSet{}}` - Successfully parsed TLE
+    - `{:error, reason}` - The body carried no usable element set
+  """
+  @spec parseTleResponseBody(String.t()) ::
+          {:ok, SpaceDust.Utils.TwoLineElementSet.t()} | {:error, String.t()}
+  def parseTleResponseBody(body) when is_binary(body) do
+    lines =
+      body
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+
+    # line 1 has "1" at the beginning, line 2 has "2"
+    line1 = Enum.find(lines, fn line -> String.starts_with?(line, "1") end)
+    line2 = Enum.find(lines, fn line -> String.starts_with?(line, "2") end)
+
+    # Celestrak answers an unknown catalog number with a short text body rather
+    # than an error status, so a missing line is a routine outcome here.
+    if is_nil(line1) or is_nil(line2) do
+      {:error, "No TLE found in Celestrak response"}
+    else
+      TLE.parseTLE(line1, line2)
     end
   end
 end
