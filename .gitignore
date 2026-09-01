@@ -30,3 +30,8 @@ space_dust-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Editor, language-server, and OS artifacts.
+.elixir_ls/
+.DS_Store
+.iex.history
