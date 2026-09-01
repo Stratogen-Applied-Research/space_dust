@@ -16,14 +16,14 @@ defmodule SpaceDust.Ingest.Celestrak do
 
   ## Notes
 
-  - Requires network access to celestrak.com
+  - Requires network access to celestrak.org
   - TLEs are typically updated several times per day
-  - NORAD catalog numbers can be found at space-track.org or celestrak.com
+  - NORAD catalog numbers can be found at space-track.org or celestrak.org
   """
 
   alias SpaceDust.Utils.Tle, as: TLE
 
-  @baseUrl "https://www.celestrak.com/NORAD/elements/gp-last.php?"
+  @baseUrl "https://celestrak.org/NORAD/elements/gp-last.php?"
   @targetIdSpecifier "CATNR="
   @tleSpecifier "&FORMAT=TLE"
 
