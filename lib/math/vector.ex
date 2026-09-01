@@ -99,10 +99,27 @@ defmodule SpaceDust.Math.Vector do
   end
 
   @spec angle(vector(), vector()) :: number
-  @doc "angle between two 3D vectors"
+  @doc """
+  Angle between two 3D vectors, in radians.
+
+  Both vectors are normalized first. `acos(dot(a, b))` alone is the angle only
+  when both are already unit length - for anything else it is either wrong or,
+  once the dot product leaves [-1, 1], an `ArithmeticError`. The clamp covers
+  the same excursion arriving from rounding on genuinely unit input.
+  """
   def angle(a, b) do
-    :math.acos(dot(a, b))
+    denominator = magnitude(a) * magnitude(b)
+
+    if denominator == 0.0 do
+      0.0
+    else
+      :math.acos(clamp(dot(a, b) / denominator, -1.0, 1.0))
+    end
   end
+
+  @doc "clamp a value into the closed interval [lower, upper]"
+  @spec clamp(number(), number(), number()) :: number()
+  def clamp(value, lower, upper), do: value |> max(lower) |> min(upper)
 
   @spec rotate(vector(), Matrix.matrix()) :: vector()
   @doc "rotate a 3D vector by a 3x3 matrix"

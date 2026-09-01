@@ -93,8 +93,18 @@ defmodule SpaceDust.State.GeodeticState do
     new(lat_deg, lon_deg, alt_km)
   end
 
-  # Internal ECEF to geodetic conversion
-  defp ecef_to_geodetic(x, y, z) do
+  @doc """
+  Convert an ECEF position in kilometers to `{latitude_deg, longitude_deg, altitude_km}`.
+
+  The single implementation of this conversion; `ECEFState.to_geodetic/1` calls
+  through to it.
+
+  Latitude is found by fixed-point iteration on the prime-vertical radius of
+  curvature, which converges in a handful of passes for any altitude a satellite
+  reaches.
+  """
+  @spec ecef_to_geodetic(float(), float(), float()) :: {float(), float(), float()}
+  def ecef_to_geodetic(x, y, z) do
     lon = :math.atan2(y, x) * 180.0 / :math.pi()
 
     # Iterative calculation for latitude
@@ -104,10 +114,20 @@ defmodule SpaceDust.State.GeodeticState do
     # Iterate to convergence
     lat = iterate_latitude(lat, p, z, 10)
 
-    # Calculate altitude
     sin_lat = :math.sin(lat)
+    cos_lat = :math.cos(lat)
     n = @earth_radius_eq / :math.sqrt(1 - @earth_e2 * sin_lat * sin_lat)
-    alt = p / :math.cos(lat) - n
+
+    # Near the poles p/cos(lat) loses all its precision - and on the polar axis
+    # itself it is 0/0, which reports the altitude as minus the prime-vertical
+    # radius, some 6400 km below the pole. Switch to the polar form there, where
+    # n * (1 - e^2) is exactly the semi-minor axis.
+    alt =
+      if abs(cos_lat) > 1.0e-12 do
+        p / cos_lat - n
+      else
+        abs(z) - n * (1 - @earth_e2)
+      end
 
     lat_deg = lat * 180.0 / :math.pi()
 

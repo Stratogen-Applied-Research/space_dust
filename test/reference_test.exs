@@ -7,14 +7,14 @@ defmodule ReferenceTest do
   Both libraries were evaluated at the same epoch on the same inputs.
 
   These exist because the rest of the suite passed while the frame chain was
-  wrong by hundreds of kilometres: nothing here was comparing against anything
+  wrong by hundreds of kilometers: nothing here was comparing against anything
   outside the library. Tolerances are set two to four orders of magnitude below
   the error each defect actually produced, and far enough above Earth-orientation
   data jitter that refreshing the IERS file will not move them.
   """
   use ExUnit.Case, async: false
 
-  alias SpaceDust.Bodies.{Earth, Moon}
+  alias SpaceDust.Bodies.{Earth, Moon, Sun}
   alias SpaceDust.Math.Vector
   alias SpaceDust.Observations
   alias SpaceDust.Observations.AzEl
@@ -190,8 +190,8 @@ defmodule ReferenceTest do
   describe "lunar ephemeris" do
     test "the distance spans the real perigee-to-apogee range" do
       # A series in Earth radii with amplitudes an order of magnitude short
-      # leaves the Moon on a near-circular orbit: 5 600 km of travel instead of
-      # 44 000. Sampling six weeks is enough to see a full anomalistic month.
+      # leaves the Moon on a near-circular orbit: 5,600 km of travel instead of
+      # 44,000. Sampling six weeks is enough to see a full anomalistic month.
       {closest, farthest} =
         Enum.reduce(0..41, {1.0e30, 0.0}, fn day, {lo, hi} ->
           r =
@@ -245,6 +245,167 @@ defmodule ReferenceTest do
 
       assert distance_km(round_tripped.position, ecef.position) < 1.0e-9
       assert %ECEFState{} = ecef
+    end
+  end
+  describe "geodetic conversion" do
+    # Altitude as p / cos(lat) is 0/0 on the polar axis, which reported the
+    # altitude as minus the prime-vertical radius - 6400 km below the pole.
+    @polar_cases [
+      {"north pole, on the ellipsoid", {0.0, 0.0, 6356.7523142}, 90.0, -4.5e-8},
+      {"north pole, 100 km up", {0.0, 0.0, 6456.7523142}, 90.0, 99.999999955},
+      {"one meter off the axis", {0.001, 0.0, 6356.7523142}, 89.999991047, -3.105e-6},
+      {"south pole", {0.0, 0.0, -6356.7523142}, -90.0, -4.5e-8}
+    ]
+
+    for {name, position, latitude_deg, altitude_km} <- @polar_cases do
+      test "#{name}" do
+        {lat, _lon, alt} =
+          ECEFState.to_geodetic(
+            ECEFState.new(@epoch, unquote(Macro.escape(position)), {0.0, 0.0, 0.0})
+          )
+
+        assert_in_delta lat, unquote(latitude_deg), 1.0e-8
+        assert_in_delta alt, unquote(altitude_km), 1.0e-6
+      end
+    end
+
+    test "ECEFState and GeodeticState agree, because there is only one implementation" do
+      position = {-1270.6453909, -4745.3264885, 4056.7836714}
+      {lat, lon, alt} = ECEFState.to_geodetic(ECEFState.new(@epoch, position, {0.0, 0.0, 0.0}))
+      geodetic = GeodeticState.from_ecef(ECEFState.new(@epoch, position, {0.0, 0.0, 0.0}))
+
+      assert geodetic.latitude == lat
+      assert geodetic.longitude == lon
+      assert geodetic.altitude == alt
+    end
+
+    test "a geodetic site round-trips through ECEF" do
+      for {lat, lon, alt} <- [{39.7392, -104.9903, 1.609}, {-33.9, 151.2, 0.058}, {89.9, 0.0, 0.0}] do
+        site = GeodeticState.new(lat, lon, alt)
+
+        back =
+          site
+          |> GeodeticState.to_ecef(@epoch)
+          |> GeodeticState.from_ecef()
+
+        assert_in_delta back.latitude, lat, 1.0e-9
+        assert_in_delta back.longitude, lon, 1.0e-9
+        assert_in_delta back.altitude, alt, 1.0e-9
+      end
+    end
+  end
+
+  describe "solar and lunar ephemerides" do
+    # The series are referred to the mean equinox of date; returning them
+    # unrotated under an "ECI J2000" name left them off by the precession angle,
+    # which by 2026 is 0.36 degrees - thirty-six times the Sun series' accuracy.
+    @body_epochs [
+      {~U[2021-03-14 07:00:00Z], {147_793_461_754.259, -15_300_149_351.860, -6_632_555_179.162},
+       {396_742_244.525, 34_933_816.758, -20_615_371.615}},
+      {~U[2024-06-01 00:00:00Z], {50_409_092_576.879, 131_274_187_853.131, 56_905_711_416.475},
+       {368_489_613.459, -10_689_768.441, -14_658_430.136}},
+      {~U[2026-01-06 12:00:00Z], {39_884_653_043.473, -129_910_178_140.936, -56_313_870_013.436},
+       {-315_359_595.844, 186_128_153.629, 89_033_217.668}}
+    ]
+
+    defp angle_deg(a, {x, y, z}) do
+      Vector.angle(a, %SpaceDust.Math.Vector.Vector3D{x: x, y: y, z: z}) * 180.0 / :math.pi()
+    end
+
+    test "the Sun is returned in J2000, not mean-of-date" do
+      for {epoch, sun_ref, _moon_ref} <- @body_epochs do
+        # The reference holds the longitude of perihelion fixed at its J2000
+        # value where this series tracks its real 0.3 deg/century motion, so the
+        # two drift apart linearly with time. At J2000 itself they agree to
+        # 0.005 deg, which is what pins the rotation - see the test below.
+        assert angle_deg(Sun.eci_position(epoch), sun_ref) < 0.1
+        assert angle_deg(Sun.mod_position(epoch), sun_ref) > 0.3
+      end
+    end
+
+    test "the Sun matches the reference at J2000, where the two frames coincide" do
+      epoch = ~U[2000-01-01 12:00:00Z]
+      reference = {26_508_949_246.335, -132_752_486_846.951, -57_555_271_422.649}
+
+      assert angle_deg(Sun.eci_position(epoch), reference) < 0.01
+      # MOD and J2000 are the same frame at J2000.0, so the rotation is a no-op.
+      assert_in_delta angle_deg(Sun.mod_position(epoch), reference),
+                      angle_deg(Sun.eci_position(epoch), reference),
+                      1.0e-6
+    end
+
+    test "the Moon is returned in J2000, not mean-of-date" do
+      for {epoch, _sun_ref, moon_ref} <- @body_epochs do
+        assert angle_deg(Moon.eci_position(epoch), moon_ref) < 0.03
+        assert angle_deg(Moon.mod_position(epoch), moon_ref) > 0.25
+      end
+    end
+
+    test "the phase angle does not raise at new or full moon" do
+      # A bare acos of the dot product raises once rounding pushes it outside
+      # [-1, 1], which is exactly what happens at syzygy.
+      for day <- 0..60 do
+        epoch = DateTime.add(~U[2026-01-01 00:00:00Z], day * 86_400, :second)
+        angle = Moon.phase_angle(epoch)
+
+        assert angle >= 0.0 and angle <= :math.pi()
+      end
+    end
+  end
+
+  describe "TLE parsing" do
+    @line2 "2 25544  51.6400 208.1200 0001234  85.0000 275.0000 15.48919100123456"
+
+    defp parse_epoch_year(two_digit_year) do
+      line1 = "1 25544U 98067A   #{two_digit_year}006.50000000  .00016717  00000-0  10270-3 0  9002"
+      {:ok, tle} = Tle.parseTLE(line1, @line2)
+      tle.epoch.year
+    end
+
+    test "the epoch year pivots at 57, not on today's date" do
+      # NORAD's fixed window: 57-99 are 1957-1999, 00-56 are 2000-2056. Pivoting
+      # on the current year sent YY=27 to 1927 and changed its own answer as the
+      # calendar advanced.
+      assert parse_epoch_year("00") == 2000
+      assert parse_epoch_year("26") == 2026
+      assert parse_epoch_year("27") == 2027
+      assert parse_epoch_year("30") == 2030
+      assert parse_epoch_year("56") == 2056
+      assert parse_epoch_year("57") == 1957
+      assert parse_epoch_year("99") == 1999
+    end
+
+    test "BSTAR parses whichever way the sign column is written" do
+      # Some producers leave the sign column blank for a positive value, others
+      # write "+". Folding it into the mantissa made "+10270-3" fail the parse
+      # and rejected the whole element set.
+      for {field, expected} <- [
+            {" 10270-3", 1.027e-4},
+            {"+10270-3", 1.027e-4},
+            {"-10270-3", -1.027e-4},
+            {" 00000+0", 0.0}
+          ] do
+        line1 = "1 25544U 98067A   26006.50000000  .00016717  00000-0 #{field} 0  9002"
+
+        assert {:ok, tle} = Tle.parseTLE(line1, @line2)
+        assert_in_delta tle.bStar, expected, 1.0e-12
+      end
+    end
+  end
+
+  describe "vector math" do
+    test "the angle between vectors normalizes and clamps" do
+      unit = fn {x, y, z} -> %SpaceDust.Math.Vector.Vector3D{x: x, y: y, z: z} end
+
+      # acos(dot) without normalizing gives acos(9.0) here, which raises.
+      assert_in_delta Vector.angle(unit.({3.0, 0.0, 0.0}), unit.({3.0, 0.0, 0.0})), 0.0, 1.0e-12
+      assert_in_delta Vector.angle(unit.({3.0, 0.0, 0.0}), unit.({0.0, 4.0, 0.0})),
+                      :math.pi() / 2.0,
+                      1.0e-12
+
+      assert_in_delta Vector.angle(unit.({2.0, 0.0, 0.0}), unit.({-5.0, 0.0, 0.0})),
+                      :math.pi(),
+                      1.0e-12
     end
   end
 end

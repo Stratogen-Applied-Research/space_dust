@@ -70,14 +70,18 @@ defmodule SpaceDust.Utils.Tle do
       # TLE has correct number of characters, proceed with parsing
       {69, 69} ->
         try do
+          # NORAD's two-digit epoch year uses a fixed pivot at 57: 57-99 are
+          # 1957-1999, 00-56 are 2000-2056. Pivoting on the current year instead
+          # sends near-future element sets a century backward - a 2030 epoch
+          # parsed as 1930 - and makes the same TLE parse differently as the
+          # calendar advances, so a cached result stops matching a fresh one.
           lastDigitsOfYear = String.to_integer(String.slice(line1, 18..19))
-          currentYear = Date.utc_today().year
 
           epochYear =
-            if lastDigitsOfYear > currentYear - 2000 do
-              1900 + lastDigitsOfYear
-            else
+            if lastDigitsOfYear < 57 do
               2000 + lastDigitsOfYear
+            else
+              1900 + lastDigitsOfYear
             end
 
           # day 1 is 0 days from the start of the year
@@ -90,14 +94,7 @@ defmodule SpaceDust.Utils.Tle do
             DateTime.add(startOfYear, daysToAdd, :day)
             |> DateTime.add(microsecondsToAdd, :microsecond)
 
-          meanMotionDoubleDot =
-            if String.at(line1, 44) == "-" do
-              -1 * String.to_float(String.replace("0." <> String.slice(line1, 45..49), " ", "")) *
-                Float.pow(10.0, String.to_integer(String.slice(line1, 50..51)))
-            else
-              String.to_float(String.replace("0." <> String.slice(line1, 45..49), " ", "")) *
-                Float.pow(10.0, String.to_integer(String.slice(line1, 50..51)))
-            end
+          meanMotionDoubleDot = parseExponential(line1, 44)
 
           meanMotionDot =
             if String.at(line1, 33) == "-" do
@@ -106,14 +103,7 @@ defmodule SpaceDust.Utils.Tle do
               String.to_float(String.replace("0" <> String.slice(line1, 34..42), " ", ""))
             end
 
-          bStar =
-            if String.at(line1, 53) == "-" do
-              -1 * String.to_float(String.replace("0." <> String.slice(line1, 54..58), " ", "")) *
-                Float.pow(10.0, String.to_integer(String.slice(line1, 59..60)))
-            else
-              String.to_float(String.replace("0." <> String.slice(line1, 53..58), " ", "")) *
-                Float.pow(10.0, String.to_integer(String.slice(line1, 59..60)))
-            end
+          bStar = parseExponential(line1, 53)
 
           tle = %TwoLineElementSet{
             # line 1 parameters
@@ -149,6 +139,33 @@ defmodule SpaceDust.Utils.Tle do
       _ ->
         {:error, "Unable to parse TLE- line length is incorrect"}
     end
+  end
+
+  # Read one of the TLE's assumed-decimal-point exponential fields, which occupy
+  # eight columns starting at `offset`: a sign, a five-digit mantissa with an
+  # implied leading "0.", then a signed one-digit exponent.
+  #
+  # The sign column is blank for a positive value in most producers' output, but
+  # not all of them - some write "+". Both have to be accepted: reading the sign
+  # column as part of the mantissa makes "+10270-3" fail String.to_float and
+  # rejects the whole element set.
+  defp parseExponential(line, offset) do
+    sign = if String.at(line, offset) == "-", do: -1.0, else: 1.0
+
+    mantissa =
+      line
+      |> String.slice((offset + 1)..(offset + 5))
+      |> String.replace(" ", "")
+
+    exponent =
+      line
+      |> String.slice((offset + 6)..(offset + 7))
+      |> String.replace(" ", "")
+
+    mantissa = if mantissa == "", do: "0", else: mantissa
+    exponent = if exponent in ["", "+", "-"], do: "0", else: exponent
+
+    sign * String.to_float("0." <> mantissa) * Float.pow(10.0, String.to_integer(exponent))
   end
 
   @doc """

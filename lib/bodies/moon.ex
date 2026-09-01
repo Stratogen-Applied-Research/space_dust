@@ -5,9 +5,17 @@ defmodule SpaceDust.Bodies.Moon do
   Provides functions to compute the Moon's position in various coordinate frames,
   including ECI (Earth-Centered Inertial).
 
-  The algorithms are based on the low-precision lunar coordinates from the
-  Astronomical Almanac (approximate accuracy ~0.3 degrees in longitude,
-  ~0.2 degrees in latitude, ~0.003 Earth radii in distance).
+  Direction comes from the low-precision lunar coordinates in the Astronomical
+  Almanac; distance comes from the horizontal parallax series in Montenbruck and
+  Gill, which is what makes the distance span the real perigee-to-apogee range
+  of roughly 356,500 km to 406,700 km.
+
+  Cross-checked against an independent implementation at six epochs from 2021 to
+  2026, the direction agrees to within 0.02 degrees and the distance to within
+  half a kilometer. That is agreement, not absolute accuracy: both are analytic
+  series, and neither has been measured against a JPL ephemeris here. Treat this
+  as adequate for pointing, visibility, and third-body perturbations, and not for
+  anything that flies to the Moon.
   """
 
   alias SpaceDust.Utils.Constants
@@ -110,22 +118,43 @@ defmodule SpaceDust.Bodies.Moon do
   def radius, do: @lunar_radius
 
   @doc """
-  Calculate the Moon's position in the Earth-Centered Inertial (ECI) frame.
+  Calculate the Moon's position in the Earth-Centered Inertial J2000 (ECI) frame.
 
-  Uses the low-precision lunar coordinates from the Astronomical Almanac.
-  Position is returned in meters.
+  Uses the low-precision lunar coordinates from the Astronomical Almanac, which
+  are referred to the mean equinox *of date*; the result is rotated into J2000
+  before it is returned, to match `ECIState`. Position is returned in meters.
 
   ## Parameters
     - `epochUtc` - DateTime in UTC
 
   ## Returns
-    - `%Vector3D{}` - Moon position in ECI frame (meters)
+    - `%Vector3D{}` - Moon position in ECI J2000 frame (meters)
 
   ## Example
       iex> SpaceDust.Bodies.Moon.eci_position(~U[2024-01-01 12:00:00Z])
   """
   @spec eci_position(DateTime.t()) :: Vector.vector()
   def eci_position(epochUtc) do
+    epochUtc
+    |> mod_position()
+    |> SpaceDust.Bodies.Earth.modToJ2000(epochUtc)
+  end
+
+  @doc """
+  Calculate the Moon's position in the mean equinox of date (MOD) frame.
+
+  This is what the low-precision Almanac series produces natively. Prefer
+  `eci_position/1` for anything that has to line up with an `ECIState`, which is
+  J2000 - by 2026 the two frames differ by about 0.36 degrees.
+
+  ## Parameters
+    - `epochUtc` - DateTime in UTC
+
+  ## Returns
+    - `%Vector3D{}` - Moon position in MOD frame (meters)
+  """
+  @spec mod_position(DateTime.t()) :: Vector.vector()
+  def mod_position(epochUtc) do
     utc = UTC.from_datetime(epochUtc)
     tt = Transforms.utc_to_tt(utc)
     t = TT.julian_centuries_j2000(tt)
@@ -189,7 +218,7 @@ defmodule SpaceDust.Bodies.Moon do
     # Going through the parallax rather than a series in Earth radii is what
     # gets the amplitude right: the leading term is 186.54" against a 3422.7"
     # mean, which is 3.28 Earth radii of variation - the Moon really does swing
-    # between about 356 500 km and 406 700 km over an anomalistic month.
+    # between about 356,500 km and 406,700 km over an anomalistic month.
     parallax_arcsec =
       3422.7 +
         186.5398 * :math.cos(m_prime_rad) +
@@ -218,12 +247,12 @@ defmodule SpaceDust.Bodies.Moon do
     y_ecl = r_m * cos_beta * sin_lambda
     z_ecl = r_m * sin_beta
 
-    # Rotate to equatorial (ECI) frame
-    x = x_ecl
-    y = y_ecl * cos_epsilon - z_ecl * sin_epsilon
-    z = y_ecl * sin_epsilon + z_ecl * cos_epsilon
-
-    %Vector3D{x: x, y: y, z: z}
+    # Rotate ecliptic-of-date to equatorial-of-date, which is MOD
+    %Vector3D{
+      x: x_ecl,
+      y: y_ecl * cos_epsilon - z_ecl * sin_epsilon,
+      z: y_ecl * sin_epsilon + z_ecl * cos_epsilon
+    }
   end
 
   @doc """
@@ -305,12 +334,10 @@ defmodule SpaceDust.Bodies.Moon do
   """
   @spec phase_angle(DateTime.t()) :: float()
   def phase_angle(epochUtc) do
-    moon_dir = direction(epochUtc)
-    sun_dir = SpaceDust.Bodies.Sun.direction(epochUtc)
-
-    # Phase angle is the angle between the sun and moon vectors
-    cos_angle = Vector.dot(moon_dir, sun_dir)
-    :math.acos(cos_angle)
+    # Vector.angle/2 normalizes and clamps; a bare acos of the dot product
+    # raises when rounding pushes it a step outside [-1, 1], which happens at
+    # new and full moon - exactly the two epochs anyone checks first.
+    Vector.angle(direction(epochUtc), SpaceDust.Bodies.Sun.direction(epochUtc))
   end
 
   # Helper to normalize degrees to 0-360 range

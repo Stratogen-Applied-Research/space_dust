@@ -13,6 +13,7 @@ defmodule SpaceDust.Bodies.Sun do
   alias SpaceDust.Math.Functions, as: Math
   alias SpaceDust.Math.Vector
   alias SpaceDust.Math.Vector.Vector3D
+  alias SpaceDust.Bodies.Earth
   alias SpaceDust.Time.{UTC, TT, Transforms}
 
   # Sun's gravitational parameter (m^3/s^2)
@@ -52,29 +53,53 @@ defmodule SpaceDust.Bodies.Sun do
   def radius, do: @solar_radius
 
   @doc """
-  Calculate the Sun's position in the Earth-Centered Inertial (ECI) frame.
+  Calculate the Sun's position in the Earth-Centered Inertial J2000 (ECI) frame.
 
-  Uses the low-precision solar coordinates from the Astronomical Almanac.
   Position is returned in meters.
+
+  The underlying Almanac series is referred to the mean equinox *of date*, so
+  the result is rotated into J2000 before it is returned. That matters: by 2026
+  the two frames differ by about 0.36 degrees, which is thirty-six times this
+  series' own accuracy, and `ECIState` is J2000. Use `mod_position/1` if you
+  want the of-date vector.
 
   ## Parameters
     - `epochUtc` - DateTime in UTC
 
   ## Returns
-    - `%Vector3D{}` - Sun position in ECI frame (meters)
+    - `%Vector3D{}` - Sun position in ECI J2000 frame (meters)
 
   ## Example
       iex> SpaceDust.Bodies.Sun.eci_position(~U[2024-01-01 12:00:00Z])
   """
   @spec eci_position(DateTime.t()) :: Vector.vector()
   def eci_position(epochUtc) do
+    epochUtc
+    |> mod_position()
+    |> Earth.modToJ2000(epochUtc)
+  end
+
+  @doc """
+  Calculate the Sun's position in the mean equinox of date (MOD) frame.
+
+  This is what the low-precision Astronomical Almanac series produces natively,
+  to roughly 0.01 degrees. Prefer `eci_position/1` for anything that has to line
+  up with an `ECIState`.
+
+  ## Parameters
+    - `epochUtc` - DateTime in UTC
+
+  ## Returns
+    - `%Vector3D{}` - Sun position in MOD frame (meters)
+  """
+  @spec mod_position(DateTime.t()) :: Vector.vector()
+  def mod_position(epochUtc) do
     utc = UTC.from_datetime(epochUtc)
     tt = Transforms.utc_to_tt(utc)
     t_centuries = TT.julian_centuries_j2000(tt)
 
     # Mean longitude of the Sun (degrees)
     l0 = Math.polyEval(meanLongitudePoly(), t_centuries)
-    _l0_rad = rem_degrees(l0) * Constants.degreesToRadians()
 
     # Mean anomaly of the Sun (degrees)
     m = Math.polyEval(meanAnomalyPoly(), t_centuries)
@@ -100,21 +125,19 @@ defmodule SpaceDust.Bodies.Sun do
         0.01671 * :math.cos(m_rad) -
         0.00014 * :math.cos(2.0 * m_rad)
 
-    # Convert to meters
     r_m = r_au * @au_meters
 
-    # Geocentric equatorial coordinates (ECI)
-    # The Sun's position vector from Earth
+    # Geocentric equatorial coordinates, mean equinox of date
     cos_lambda = :math.cos(lambda_rad)
     sin_lambda = :math.sin(lambda_rad)
     cos_epsilon = :math.cos(epsilon_rad)
     sin_epsilon = :math.sin(epsilon_rad)
 
-    x = r_m * cos_lambda
-    y = r_m * sin_lambda * cos_epsilon
-    z = r_m * sin_lambda * sin_epsilon
-
-    %Vector3D{x: x, y: y, z: z}
+    %Vector3D{
+      x: r_m * cos_lambda,
+      y: r_m * sin_lambda * cos_epsilon,
+      z: r_m * sin_lambda * sin_epsilon
+    }
   end
 
   @doc """

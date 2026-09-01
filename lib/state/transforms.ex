@@ -130,7 +130,7 @@ defmodule SpaceDust.State.Transforms do
   Transforms **from Mean of Date (MOD) to TEME**. TEME is not true-of-date: it
   uses the *mean* obliquity on both sides of the nutation rotation and carries
   no separate equation-of-equinoxes step. That is SGP4's own convention and it
-  has to be matched exactly, or a TLE-derived state lands kilometres off.
+  has to be matched exactly, or a TLE-derived state lands kilometers off.
   """
   defn teme_nutation_matrix(mean_eps, delta_psi) do
     multiply_matrices(

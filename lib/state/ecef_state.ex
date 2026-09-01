@@ -67,40 +67,9 @@ defmodule SpaceDust.State.ECEFState do
   """
   @spec to_geodetic(t()) :: {float(), float(), float()}
   def to_geodetic(%__MODULE__{position: {x, y, z}}) do
-    # WGS84 parameters
-    a = 6378.137  # Earth equatorial radius in km
-    f = 1.0 / 298.257223563  # Flattening
-    e2 = 2 * f - f * f  # First eccentricity squared
-
-    lon = :math.atan2(y, x) * 180.0 / :math.pi()
-
-    # Iterative calculation for latitude
-    p = :math.sqrt(x * x + y * y)
-    lat = :math.atan2(z, p * (1 - e2))
-
-    # Iterate to convergence
-    lat = iterate_latitude(lat, p, z, a, e2, 10)
-
-    # Calculate altitude
-    sin_lat = :math.sin(lat)
-    n = a / :math.sqrt(1 - e2 * sin_lat * sin_lat)
-    alt = p / :math.cos(lat) - n
-
-    lat_deg = lat * 180.0 / :math.pi()
-
-    {lat_deg, lon, alt}
-  end
-
-  defp iterate_latitude(lat, _p, _z, _a, _e2, 0), do: lat
-  defp iterate_latitude(lat, p, z, a, e2, iterations) do
-    sin_lat = :math.sin(lat)
-    n = a / :math.sqrt(1 - e2 * sin_lat * sin_lat)
-    new_lat = :math.atan2(z + e2 * n * sin_lat, p)
-
-    if abs(new_lat - lat) < 1.0e-12 do
-      new_lat
-    else
-      iterate_latitude(new_lat, p, z, a, e2, iterations - 1)
-    end
+    # One implementation of this conversion, in GeodeticState. This module used
+    # to carry a second copy with its own WGS84 constants, which is how the two
+    # drifted: only one of them ever got the polar-altitude branch.
+    SpaceDust.State.GeodeticState.ecef_to_geodetic(x, y, z)
   end
 end

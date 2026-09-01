@@ -31,6 +31,8 @@ defmodule SpaceDust.Bodies.Earth do
   alias SpaceDust.Data.IAU1980, as: IAU1980
   alias SpaceDust.Data.IAU1980Data, as: IAU1980Data
   alias SpaceDust.Data.EOPCache
+  alias SpaceDust.Math.Vector
+  alias SpaceDust.Math.Vector.Vector3D
   alias SpaceDust.Time.{UTC, Transforms}
 
   # doc "'zeta' coefficients for earth precession - IAU 1976"
@@ -214,6 +216,42 @@ defmodule SpaceDust.Bodies.Earth do
       theta: theta,
       z: z
     }
+  end
+
+  @doc """
+  Rotate a mean-equinox-of-date (MOD) vector into ECI J2000.
+
+  The low-precision Sun and Moon series are referred to the mean equinox of
+  date, which by 2026 differs from J2000 by about 0.36 degrees - thirty-six
+  times the Sun series' own accuracy. Anything combined with an `ECIState`, which
+  is J2000, has to come through here first.
+
+  This is the transpose of `precessionAngles/1`'s rotation: `ROT3(zeta)
+  ROT2(-theta) ROT3(z)` in passive form.
+  """
+  @spec modToJ2000(Vector.vector(), DateTime.t()) :: Vector.vector()
+  def modToJ2000(%Vector3D{} = vector, epochUtc) do
+    %PrecessionAngles{zeta: zeta, theta: theta, z: z} = precessionAngles(epochUtc)
+
+    vector
+    |> rotateZ(z)
+    |> rotateY(-theta)
+    |> rotateZ(zeta)
+  end
+
+  # Passive (frame) rotations, matching SpaceDust.State.Transforms. Kept local
+  # and in plain Elixir: Math.Vector.rotateZ/2 is an active rotation, and a
+  # three-element rotation does not need an Nx tensor round trip.
+  defp rotateZ(%Vector3D{x: x, y: y, z: z}, angle) do
+    c = :math.cos(angle)
+    s = :math.sin(angle)
+    %Vector3D{x: c * x + s * y, y: -s * x + c * y, z: z}
+  end
+
+  defp rotateY(%Vector3D{x: x, y: y, z: z}, angle) do
+    c = :math.cos(angle)
+    s = :math.sin(angle)
+    %Vector3D{x: c * x - s * z, y: y, z: s * x + c * z}
   end
 
   # doc "compute deltaPsi and deltaEpsilon from IAU 1980 nutation theory"

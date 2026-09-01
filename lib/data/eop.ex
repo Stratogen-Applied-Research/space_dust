@@ -262,46 +262,20 @@ defmodule SpaceDust.Data.EOP do
     }
   end
 
-  @doc "get the EOP data at a given MJD, interpolating between the closest two data points"
+  @doc """
+  Get the EOP data at a given MJD, interpolating between the bracketing records.
+
+  Delegates to `SpaceDust.Data.EOPCache`, which brackets by binary search over a
+  table parsed once into ETS.
+
+  The implementation this replaced searched with
+  `Enum.find(sorted, & &1.modifiedJulianDate < mjd)`, which on an ascending list
+  returns the *earliest* record rather than the closest prior one - so every
+  lookup interpolated linearly from 1973 to the day after the epoch asked for.
+  It also re-read and re-parsed the whole file on each call.
+  """
+  @spec getEopData(float()) :: {:ok, EarthOrientationParameters.t()} | {:error, term()}
   def getEopData(mjd) do
-    case readSavedEopData() do
-      {:ok, rawEopData} ->
-        case parseEopData(rawEopData) do
-          {:ok, eopData} ->
-            # sort
-            sortedData = Enum.sort_by(eopData, & &1.modifiedJulianDate)
-
-            Enum.find(sortedData, fn eop -> eop.modifiedJulianDate >= mjd end)
-            |> case do
-              nil ->
-                Logger.warning("MJD #{mjd} is after the last EOP data point")
-                {:ok, Enum.at(sortedData, -1)}
-
-              %EarthOrientationParameters{} = futureEop ->
-                Enum.find(sortedData, fn eop -> eop.modifiedJulianDate < mjd end)
-                |> case do
-                  nil ->
-                    Logger.warning("MJD #{mjd} is before the first EOP data point")
-                    {:ok, Enum.at(sortedData, 0)}
-
-                  %EarthOrientationParameters{} = priorEop ->
-                    {:ok, interpolateBetween(priorEop, futureEop, mjd)}
-
-                  _ ->
-                    {:error, "Unable to find EOP data"}
-                end
-
-              _ ->
-                {:error, "Unable to find EOP data"}
-            end
-
-          {:error, reason} ->
-            Logger.error(reason)
-            {:error, reason}
-        end
-
-      {:error, reason} ->
-        IO.inspect(reason)
-    end
+    SpaceDust.Data.EOPCache.get(mjd)
   end
 end
