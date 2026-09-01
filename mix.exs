@@ -4,7 +4,7 @@ defmodule SpaceDust.MixProject do
   def project do
     [
       app: :space_dust,
-      version: "0.3.2",
+      version: "0.3.3",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -26,7 +26,7 @@ defmodule SpaceDust.MixProject do
   defp deps do
     [
       {:req, "~>0.5.8"},
-      {:sgp4_ex, "~> 0.2.0"},
+      {:sgp4_ex, "~> 0.2.1"},
       {:nx, "~> 0.9"},
       {:ex_doc, "~> 0.22", only: :dev, runtime: false}
     ]

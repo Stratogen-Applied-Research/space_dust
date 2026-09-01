@@ -32,6 +32,14 @@ defmodule SpaceDust.Utils.TwoLineElementSet do
     - `meanMotion` - Mean motion (revolutions per day)
     - `revNumber` - Revolution number at epoch
 
+  ### Propagation
+
+    - `sgp4Tle` - Parsed `Sgp4Ex.TLE` handle, populated by
+      `SpaceDust.Utils.Tle.parseTLE/2` so that repeated propagation of the same
+      element set does not re-parse the raw lines on every call. Treat it as
+      internal: it is `nil` on hand-built structs, and
+      `SpaceDust.Utils.Tle.getRVatTime/2` parses on demand when it is absent.
+
   ## Example
 
       {:ok, tle} = SpaceDust.Utils.Tle.parseTLE(line1, line2)
@@ -61,7 +69,8 @@ defmodule SpaceDust.Utils.TwoLineElementSet do
     :argPerigeeDeg,
     :meanAnomalyDeg,
     :meanMotion,
-    :revNumber
+    :revNumber,
+    :sgp4Tle
   ]
 
   @type t :: %__MODULE__{
@@ -82,6 +91,7 @@ defmodule SpaceDust.Utils.TwoLineElementSet do
           argPerigeeDeg: float() | nil,
           meanAnomalyDeg: float() | nil,
           meanMotion: float() | nil,
-          revNumber: integer() | nil
+          revNumber: integer() | nil,
+          sgp4Tle: Sgp4Ex.TLE.t() | nil
         }
 end

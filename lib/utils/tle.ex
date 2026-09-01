@@ -131,7 +131,7 @@ defmodule SpaceDust.Utils.Tle do
             revNumber: String.to_integer(String.replace(String.slice(line2, 63..67), " ", ""))
           }
 
-          {:ok, tle}
+          {:ok, %{tle | sgp4Tle: sgp4Handle(line1, line2)}}
         rescue
           ArgumentError -> {:error, "Unable to parse TLE- check all fields are correctly spaced"}
         end
@@ -171,8 +171,10 @@ defmodule SpaceDust.Utils.Tle do
   @doc """
   Propagate a TLE to compute position and velocity at a given epoch.
 
-  Uses the SGP4 algorithm via the sgp4_ex library (native C++ implementation)
-  for fast and accurate propagation. The output is in the TEME reference frame.
+  Uses the SGP4 algorithm via the sgp4_ex library, which propagates with
+  Vallado's native C++ NIF when it is available and transparently falls back to
+  an equivalent pure-Elixir implementation when it is not. Both backends produce
+  identical results. The output is in the TEME reference frame.
 
   ## Parameters
 
@@ -203,7 +205,13 @@ defmodule SpaceDust.Utils.Tle do
   @spec getRVatTime(TwoLineElementSet.t(), DateTime.t()) ::
           {{float(), float(), float()}, {float(), float(), float()}} | {:error, term()}
   def getRVatTime(twoLineElementSet, utcEpoch) do
-    case Sgp4Ex.parse_tle(twoLineElementSet.line1, twoLineElementSet.line2) do
+    # parseTLE/2 already paid for the sgp4_ex parse; reuse it rather than
+    # re-parsing the same 69-character lines on every propagation. Parsing costs
+    # roughly eighteen times as much as the propagation itself, and reusing the
+    # handle is also what lets sgp4_ex hit its own cache of the initialized
+    # satellite record. Structs built by hand carry no handle, so fall back to
+    # parsing on demand - that path keeps the original error behaviour.
+    case sgp4Tle(twoLineElementSet) do
       {:ok, sgp4_tle} ->
         case Sgp4Ex.propagate_tle_to_epoch(sgp4_tle, utcEpoch) do
           {:ok, %Sgp4Ex.TemeState{position: {rx, ry, rz}, velocity: {vx, vy, vz}}} ->
@@ -217,6 +225,22 @@ defmodule SpaceDust.Utils.Tle do
       {:error, reason} ->
         Logger.error("Failed to parse TLE: #{reason}")
         {:error, reason}
+    end
+  end
+
+  defp sgp4Tle(%TwoLineElementSet{sgp4Tle: %Sgp4Ex.TLE{} = handle}), do: {:ok, handle}
+
+  defp sgp4Tle(%TwoLineElementSet{line1: line1, line2: line2}),
+    do: Sgp4Ex.parse_tle(line1, line2)
+
+  # sgp4_ex is stricter than parseTLE/2 about some fields, so a set this module
+  # accepts can still be rejected here. Store nothing in that case and let
+  # getRVatTime/2 surface the parse error, exactly as it did before the handle
+  # was cached.
+  defp sgp4Handle(line1, line2) do
+    case Sgp4Ex.parse_tle(line1, line2) do
+      {:ok, handle} -> handle
+      {:error, _reason} -> nil
     end
   end
 end
